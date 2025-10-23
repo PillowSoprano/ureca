@@ -1,0 +1,121 @@
+^X
+# compare_mamko_kovae.py
+import os, numpy as np, torch, matplotlib.pyplot as plt
+from torch.utils.data import DataLoader
+import args_new as new_args
+from replay_fouling import ReplayMemory
+
+plt.rcParams["figure.dpi"]=150
+
+DEVICE = "cpu"
+
+def get_args(model_name, method_name):
+    args = dict(new_args.args, **new_args.ENV_PARAMS[model_name])
+    args["env"] = model_name
+    args["method"] = method_name
+    args["control"] = False
+    fold = f"save_model/{method_name}/{model_name}"
+    args["save_model_path"] = f"{fold}/model.pt"
+    args["save_opti_path"]  = f"{fold}/opti.pt"
+    args["shift_x"]         = f"{fold}/shift_x.txt"
+    args["scale_x"]         = f"{fold}/scale_x.txt"
+    args["shift_u"]         = f"{fold}/shift_u.txt"
+    args["scale_u"]         = f"{fold}/scale_u.txt"
+    return args
+
+def load_model(method, args):
+    if method == "kovae":
+        from kovae_model import Koopman_Desko
+    elif method == "mamba":
+        from MamKO import Koopman_Desko
+    else:
+        raise ValueError
+    model = Koopman_Desko(args)
+    model.parameter_restore(args)
+    return model
+
+def eval_one(method, model, test_draw, args, horizon=70):
+    dl = DataLoader(dataset=test_draw, batch_size=1, shuffle=False, drop_last=False)
+    SEs = []
+    with torch.no_grad():
+        for x,u in dl:
+            x,u = x.float(), u.float()
+            xhat,_ = model.pred_forward_test(x,u,False,args,-1)   # expected common API
+            # x: [1,T,D], xhat: [1,T,D]; cut to same len, then to horizon
+            T = min(x.shape[1], xhat.shape[1], horizon)
+            err = (x[:,:T,:]-xhat[:,:T,:]).cpu().numpy()
+            SEs.append(np.mean(err**2, axis=(1,2)))   # per-sample MSE over T,D
+    rmse = np.sqrt(np.mean(np.concatenate(SEs,axis=0)))
+    return rmse
+
+def maybe_load_loss(method, model_name):
+    # pick the last run folder if exists
+    root = f"loss/{method}/{model_name}"
+    if not os.path.isdir(root): return None,None
+    runs = sorted([d for d in os.listdir(root) if d.isdigit()], key=int)
+    if not runs: return None,None
+    last = runs[-1]
+    l_path = os.path.join(root,last,"loss_.txt")
+    v_path = os.path.join(root,last,"loss_t.txt")
+    if os.path.exists(l_path):
+        train = np.loadtxt(l_path)
+    else:
+        train = None
+    if os.path.exists(v_path):
+        val = np.loadtxt(v_path)
+    else:
+        val = None
+    return train,val
+
+def main():
+    model_name = "cartpole"
+    methods = ["kovae","mamba"]
+
+    results = {}
+    for method in methods:
+        args = get_args(model_name, method)
+        # env for shapes
+        if model_name == "cartpole":
+            from envs.cartpole import CartPoleEnv_adv as dreamer
+        else:
+            from envs.cartpole_V import CartPoleEnv_adv as dreamer
+        env = dreamer().unwrapped
+        args["state_dim"] = env.observation_space.shape[0]
+        args["act_dim"]   = env.action_space.shape[0]
+
+        # data (same generator)
+        rp = ReplayMemory(args, env, predict_evolution=True)
+        test_draw = rp.dataset_test_draw
+
+        model = load_model(method, args)
+        rmse = eval_one(method, model, test_draw, args, horizon=70)
+        tr, va = maybe_load_loss(method, model_name)
+
+        results[method] = {"rmse": rmse, "train_loss": tr, "val_loss": va}
+
+    # --- plot losses (if both available)
+    outdir = f"loss/compare/{model_name}"
+    os.makedirs(outdir, exist_ok=True)
+
+    if results["kovae"]["val_loss"] is not None or results["mamba"]["val_loss"] is not None:
+        plt.figure(figsize=(8,4))
+        if results["kovae"]["val_loss"] is not None:
+            plt.plot(results["kovae"]["val_loss"], label="KoVAE val")
+        if results["mamba"]["val_loss"] is not None:
+            plt.plot(results["mamba"]["val_loss"], label="MamKO val")
+        if results["kovae"]["train_loss"] is not None:
+            plt.plot(results["kovae"]["train_loss"], "--", alpha=0.5, label="KoVAE train")
+        if results["mamba"]["train_loss"] is not None:
+            plt.plot(results["mamba"]["train_loss"], "--", alpha=0.5, label="MamKO train")
+        plt.xlabel("epoch"); plt.ylabel("loss"); plt.legend(); plt.title("Loss curves")
+        plt.tight_layout()
+        plt.savefig(f"{outdir}/loss_compare.png", dpi=160)
+
+    # --- small metrics table
+    with open(f"{outdir}/metrics.txt","w") as f:
+        for m in methods:
+            f.write(f"{m}: rollout_RMSE@70 = {results[m]['rmse']:.6f}\n")
+    print("Saved:", f"{outdir}/loss_compare.png", f"{outdir}/metrics.txt")
+
+if __name__ == "__main__":
+    main()
