@@ -1,4 +1,6 @@
 # kovae_model.py
+# 这是 KoVAE 的核心实现！尝试用 PyTorch 复现它
+# 论文关键：VAE + Koopman 线性动力学（Eq.6: z_t = A * z_{t-1}）
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -331,4 +333,5 @@ class Koopman_Desko:
         self.model.to(map_loc)
         self.device = map_loc
         print(f"^_^ Model restored to device: {self.device}")
+
 
