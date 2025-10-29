@@ -6,8 +6,8 @@ from replay_fouling import ReplayMemory
 
 plt.rcParams["figure.dpi"] = 160
 
-MODEL   = "cartpole"                 # 如需换环境在这里改
-METHODS = ["mamba", "kovae"]         # MamKO vs KoVAE
+MODEL   = "cartpole"                 # 如果要换环境 我需要修改这一条
+METHODS = ["mamba", "kovae"]         # 🔥MamKO vs KoVAE！！！
 BATCH   = 128
 VAL_RATIO = 0.2
 
@@ -63,7 +63,7 @@ def load_model(method: str, args):
         device = torch.device("cpu")
     m.device = device
 
-    # MamKO 只有 .net，做个别名方便兜底
+    # MamKO 只有 .net，做个别名方便兜底！
     if not hasattr(m, "model") and hasattr(m, "net"):
         m.model = m.net
     try:
@@ -93,12 +93,11 @@ def _get_split_dataset(mem: ReplayMemory, split: str):
 
 @torch.no_grad()
 def one_step_mse(model, args, env, split="val", batch_size=BATCH):
-    """
-    使用序列数据 (x_seq, u_seq) 评估 L 步预测的 MSE（对齐到未来窗口）。
+#  使用序列数据 (x_seq, u_seq) 评估 L 步预测的 MSE（对齐到未来窗口）。
     - x_seq: [B, O+L, Dx]
     - u_seq: [B, O+L-1, Du]
     预测与真值都用同一归一化空间比较，便于方法间公平对比。
-    """
+    
     O = int(args["old_horizon"])
     L = int(args["pred_horizon"])
 
@@ -181,3 +180,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
