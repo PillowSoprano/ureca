@@ -43,7 +43,7 @@ class MyDataSet(Dataset):
         return self.x_choice[index, :], self.y_choice[index]
     
     def determine_shift_and_scale(self,args):
-        # maybe not so precise since the data may be drop by dataloader
+        
         self.shift_x = np.mean(self.x, axis=(0, 1))
         self.scale_x = np.std(self.x, axis=(0, 1))
         self.shift_u = np.mean(self.u, axis=(0, 1))
@@ -70,7 +70,7 @@ class MyDataSet(Dataset):
             self.x_choice = (self.x - self.shift_x)/self.scale_x
             self.y_choice = (self.u - self.shift_u)/self.scale_u
 
-# Class to load and preprocess data
+
 class ReplayMemory():
     def __init__(self, args, env, predict_evolution = False, LSTM = False):
         """Constructs object to hold and update training/validation data.
@@ -144,7 +144,7 @@ class ReplayMemory():
                     break
                 # print(t)
             # length_list.append(t)
-            #-------------------------------For the structure of designed mamba-----------------------------#
+            # For the structure of designed mamba#
             add_ = np.repeat(x_trial[start_number,:].reshape(-1,1),self.seq_length_O,axis =1) # For the first state !
             x_trial_ = np.concatenate((add_.T,x_trial[start_number:t,:]))
            
@@ -270,3 +270,4 @@ class ReplayMemory():
         self.u_val = np.load(path + '/u_val.npy')
         self.x_test = np.load(path + '/x_test.npy')
         self.u_test = np.load(path + '/u_test.npy')
+
