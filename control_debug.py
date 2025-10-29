@@ -1,4 +1,5 @@
-# control_debug.py  —— 诊断环境问题
+# control_debug.py
+# yongyu诊断环境问题
 import os, numpy as np, torch
 import matplotlib
 matplotlib.use("Agg")
@@ -6,14 +7,13 @@ import matplotlib.pyplot as plt
 
 import args_new as new_args
 
-# ========= 配置 =========
 METHOD = "kovae"
 MODEL  = "cartpole"
 
 args = dict(new_args.args, **new_args.ENV_PARAMS[MODEL])
 args["env"] = MODEL
 
-# ========= 加载环境 =========
+# 加载环境
 if MODEL == "cartpole":
     from envs.cartpole import CartPoleEnv_adv as dreamer
 elif MODEL == "cartpole_V":
@@ -42,14 +42,14 @@ print("\n" + "="*70)
 print("TEST 1: Zero Control (Natural Dynamics)")
 print("="*70)
 
-# 测试1：零控制看环境自然演化
+# 零控制看环境自然演化
 rst = env.reset()
 obs = rst[0] if isinstance(rst, tuple) else rst
 print(f"Initial state: {obs}")
 
 xs_zero, us_zero = [obs.copy()], []
 for t in range(100):
-    u = np.array([0.0])  # 零控制
+    u = np.array([0.0])  # ！！！零控制
     step_out = env.step(u)
     if isinstance(step_out, tuple) and len(step_out) == 5:
         obs, r, terminated, truncated, info = step_out
@@ -73,7 +73,7 @@ print("\n" + "="*70)
 print("TEST 2: Simple Proportional Control")
 print("="*70)
 
-# 测试2：简单比例控制
+# 简单比例控制
 rst = env.reset()
 obs = rst[0] if isinstance(rst, tuple) else rst
 print(f"Initial state: {obs}")
@@ -81,7 +81,7 @@ print(f"Initial state: {obs}")
 X_REF = np.zeros(4)
 xs_prop, us_prop = [obs.copy()], []
 
-# 非常保守的增益
+# 这是非常保守的增益
 Kp = np.array([1.0, 0.5, 10.0, 2.0])
 
 for t in range(200):
@@ -119,7 +119,7 @@ print("\n" + "="*70)
 print("TEST 3: Stronger LQR Control")
 print("="*70)
 
-# 测试3：更强的 LQR
+# 更强的 LQR
 rst = env.reset()
 obs = rst[0] if isinstance(rst, tuple) else rst
 print(f"Initial state: {obs}")
@@ -165,7 +165,7 @@ xs_lqr = np.array(xs_lqr)
 us_lqr = np.array(us_lqr)
 print(f"Survived {len(xs_lqr)} steps with LQR control")
 
-# ========= 可视化对比 =========
+# 可视化对比
 fig, axs = plt.subplots(5, 3, figsize=(16, 14), sharex='col')
 fig.suptitle('Control Comparison: Zero / Proportional / LQR', fontsize=14, fontweight='bold')
 
@@ -214,10 +214,10 @@ os.makedirs(out_dir, exist_ok=True)
 fig.savefig(f"{out_dir}/diagnostic_comparison.png", dpi=150)
 print(f"\nDiagnostic plot saved: {out_dir}/diagnostic_comparison.png")
 
-# ========= 结论 =========
-print("\n" + "="*70)
+# 结论
+print("\n" + ":D"*70)
 print("DIAGNOSTIC SUMMARY")
-print("="*70)
+print("( ´ ▽ ` )ﾉ"*70)
 
 if len(xs_lqr) > 200:
     print("✓ LQR control works! The environment is controllable.")
@@ -244,4 +244,5 @@ print("1. Check env termination conditions (x_threshold, theta_threshold)")
 print("2. Increase control gains gradually")
 print("3. Add integral action for steady-state error")
 print("4. Verify control sign matches dynamics")
-print("="*70)
+print("(^з^)-☆"*70)
+
