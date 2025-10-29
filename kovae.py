@@ -1,5 +1,5 @@
 # kovae.py
-# 我需要导入一些基本的包。torch 是 PyTorch 的核心库，是用来构建深度学习模型的
+# 核心模型实现！需要导入一些基本的包。torch 是 PyTorch 的核心库，是用来构建深度学习模型的
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -146,3 +146,4 @@ class KoVAE(nn.Module):
 # 重点在 “Koopman A” 的求法，用最小二乘去拟合隐空间动力系统
 # 论文里后面还加了谱正则项（限制特征值在单位圆上）
 # 那部分应该在 loss 里体现？
+
