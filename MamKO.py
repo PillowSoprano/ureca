@@ -112,7 +112,7 @@ class Koopman_Desko(object):
             loss_buff += self.loss
             count += 1
 
-            # --- 修正 zero_grad()、加入 NaN 保护与梯度裁剪 ---
+            # 修正 zero_grad()、加入 NaN 保护与梯度裁剪（by gpt）
             # 若 loss 数值异常，回滚到最近 checkpoint 并降低学习率，然后跳过这一小批
             if not torch.isfinite(self.loss):
                 print(f"NaN detected at epoch {e} — restore last checkpoint & decay LR")
@@ -125,9 +125,9 @@ class Koopman_Desko(object):
                     g['lr'] = max(g.get('lr', args.get('lr1', 1e-3)) * 0.5, 1e-5)
                 continue
 
-            self.optimizer1.zero_grad()                          # ← 原来缺少 ()
+            self.optimizer1.zero_grad()                          #  原来缺少 ()
             self.loss.backward()
-            torch.nn.utils.clip_grad_norm_(                      # ← 梯度裁剪，防再炸
+            torch.nn.utils.clip_grad_norm_(                      #  梯度裁剪，防再炸出NaN
                 self.net.parameters(), max_norm=1.0
             )
             self.optimizer1.step()
@@ -402,3 +402,4 @@ class Mamba(nn.Module):
 
 if __name__ == '__main__':
     pass    
+
