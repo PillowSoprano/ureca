@@ -63,7 +63,7 @@ def maybe_load_loss(method):
 def main():
     os.makedirs(OUTDIR, exist_ok=True)
 
-    # 1) 只生成一次环境和数据 —— 确保公平
+    # 1) 只生成一次环境和数据
     from envs.cartpole import CartPoleEnv_adv as dreamer
     env = dreamer().unwrapped
     base_args = dict(new_args.args, **new_args.ENV_PARAMS[MODEL])
@@ -114,3 +114,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
