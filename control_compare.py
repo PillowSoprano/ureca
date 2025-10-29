@@ -51,7 +51,7 @@ def norm_fns(args):
     return norm_x, denorm_x
 
 def encode_x(policy, x_np, use_action=False, act_dim=1):
-    """编码当前状态到 latent；若无 encoder，则直接使用归一化状态作为 latent。"""
+# 编码当前状态到 latent；若无 encoder，则直接使用归一化状态作为 latent
     xn = policy._norm_x(x_np.astype(np.float32))
     x = torch.from_numpy(xn[None, None, :]).float().to(policy.device)
     if use_action:
@@ -70,7 +70,7 @@ def encode_x(policy, x_np, use_action=False, act_dim=1):
         return xn.astype(np.float32)
 
 def fit_abcd(policy, args, env):
-    """从训练数据拟合 z_{t+1} = A z_t + B u_t + c 以及 x ≈ C z + d。"""
+# 从训练数据拟合 z_{t+1} = A z_t + B u_t + c 以及 x ≈ C z + d
     rp = ReplayMemory(args, env, predict_evolution=True)
     loader = DataLoader(rp.dataset_train, batch_size=128, shuffle=True)
     Z0_list, Z1_list, U_list, X0_list = [], [], [], []
@@ -88,7 +88,7 @@ def fit_abcd(policy, args, env):
                 policy.model.eval()
                 z, _ = policy.model.enc(xin)  # [B,T,k]
             else:
-                z = x  # [B,T,Dx]：无 encoder 时，直接用状态作为 latent
+                z = x  # [B,T,Dx]：无 encoder 时，直接用状态作为 latent!!
 
             Tm = min(z.size(1), u.size(1))
             if Tm < 2:
@@ -134,7 +134,7 @@ def fit_abcd(policy, args, env):
     C = (S @ Cn).astype(np.float32)         # [Dx×k]
     d = (S @ dn + shift_x).astype(np.float32)
 
-    # sign correction per dimension（保证每个维度的相关性为正）
+    # sign correction per dimension（保证每个维度的相关性为正!）
     X0_phys = (X0 * scale_x) + shift_x
     Xhat0   = (C @ Z0.T + d[:, None]).T
     signs = []
@@ -320,3 +320,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # plz don't fail
