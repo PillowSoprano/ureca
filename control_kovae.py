@@ -29,18 +29,18 @@ print(f"Environment: {MODEL}")
 print(f"u_max: {u_max}")
 print(f"Angle limit: ±{np.degrees(env.theta_threshold_radians):.1f}°")
 
-# ========= 优化的自适应LQR控制器 =========
+# 优化的自适应LQR控制器
 class OptimizedLQRController:
     def __init__(self, u_max, angle_limit):
         self.u_max = u_max
         self.angle_limit = angle_limit
         
-        # 优化的LQR增益 - 更强的位置控制
+        # 更强的位置控制
         self.K_base = np.array([
-            -3.5,    # 位置 (增强 - 减少位置漂移)
-            -5.0,    # 速度 (增强 - 更快阻尼)
-            -40.0,   # 角度 (略微增强)
-            -10.0    # 角速度 (增强 - 更好的阻尼)
+            -3.5,    # 减少位置漂移)
+            -5.0,    # 更快阻尼)
+            -40.0,   # 略微增强角度
+            -10.0    # 角速度增强，更好的阻尼
         ])
         
         # 改进的积分控制
@@ -61,7 +61,7 @@ class OptimizedLQRController:
         err = x - X_REF
         angle_ratio = abs(x[2]) / self.angle_limit
         
-        # === 自适应增益 - 优化策略 ===
+        # 自适应增益 优化策略
         if angle_ratio > 0.85:  # 极度危险 (>17°)
             gain_factor = 2.2
             emergency_boost = 8.0 * np.sign(x[2]) * (angle_ratio - 0.85)
@@ -91,16 +91,16 @@ class OptimizedLQRController:
             K_adapted[0] *= 1.3  # 增强位置控制
             K_adapted[1] *= 1.2
         
-        # === 状态反馈 ===
+        # 状态反馈
         u_fb = -K_adapted @ err
         
-        # === 智能积分控制 ===
+        # 智能积分控制
         if angle_ratio < 0.4:  # 安全区域才使用积分
             # 位置积分（主要）
             self.integral_pos += err[0] * dt
             self.integral_pos = np.clip(self.integral_pos, -2.0, 2.0)
             
-            # 角度积分（辅助，消除小的系统偏差）
+            # 角度积分（辅助，我用它消除小的系统偏差）
             self.integral_angle += err[2] * dt
             self.integral_angle = np.clip(self.integral_angle, -0.1, 0.1)
             
@@ -111,7 +111,7 @@ class OptimizedLQRController:
             self.integral_angle *= 0.5
             u_int = 0.0
         
-        # === 能量整形 ===
+        # 能量整形
         potential_energy = x[2]**2
         kinetic_energy = x[3]**2
         total_energy = potential_energy + 0.05 * kinetic_energy
@@ -122,17 +122,17 @@ class OptimizedLQRController:
         else:
             energy_damping = 0.0
         
-        # === 前馈补偿（重力效应的线性化补偿）===
+        # 前馈补偿（重力效应的线性化补偿）
         # 对于小角度，补偿重力导致的加速度
         if abs(x[2]) < 0.15:  # ~8.6°
             gravity_compensation = -5.0 * x[2]  # 补偿线性化的重力项
         else:
             gravity_compensation = 0.0
         
-        # === 总控制 ===
+        # 总控制
         u = u_fb + u_int + energy_damping + gravity_compensation + emergency_boost
         
-        # === 智能速率限制 ===
+        # 智能速率限制
         # 根据角度调整允许的变化率
         if angle_ratio > 0.7:
             max_delta = 0.8 * self.u_max  # 危险时允许大变化
@@ -153,7 +153,7 @@ class OptimizedLQRController:
 
 controller = OptimizedLQRController(u_max, env.theta_threshold_radians)
 
-# ========= 智能初始化 =========
+# 智能初始化
 print("\nSearching for optimal initial state...")
 best_obs = None
 best_score = float('inf')
@@ -188,14 +188,14 @@ print(f"Initial state:")
 print(f"  Position: {obs[0]:7.4f} m,  Velocity: {obs[1]:7.4f} m/s")
 print(f"  Angle:    {obs[2]:7.4f} rad ({np.degrees(obs[2]):6.2f}°),  Ang.Vel: {obs[3]:7.4f} rad/s")
 
-# ========= 闭环仿真 =========
+# 闭环仿真
 T_sim = 1000
 xs, us = [obs.copy()], []
 controller.reset()
 
-print("\n" + "="*70)
+print("\n" + "☆"*70)
 print("SIMULATION START")
-print("="*70)
+print("☆"*70)
 
 stabilized_flag = False
 stabilization_time = None
@@ -252,9 +252,9 @@ xs = np.array(xs)
 us = np.array(us)
 final_err = np.linalg.norm(xs[-1] - X_REF)
 
-print("\n" + "="*70)
+print("\n" + "☆"*70)
 print("PERFORMANCE METRICS")
-print("="*70)
+print("☆"*70)
 print(f"Simulation length:     {len(xs)} steps ({len(xs)*0.02:.1f}s)")
 print(f"Final tracking error:  {final_err:.5f}")
 print(f"\nFinal state:")
@@ -288,7 +288,7 @@ for threshold, name in [(0.02, "2%"), (0.05, "5%"), (0.10, "10%")]:
 control_effort = np.sum(np.abs(us))
 print(f"\nControl effort: {control_effort:.2f} (total |u|)")
 
-# ========= 增强的可视化 =========
+# 可视化
 tt = np.arange(len(xs))
 fig, axs = plt.subplots(5, 1, figsize=(15, 14), sharex=True)
 
@@ -363,10 +363,10 @@ os.makedirs(out_dir, exist_ok=True)
 fig.savefig(f"{out_dir}/optimized_adaptive_control.png", dpi=200, bbox_inches='tight')
 print(f"\n📊 High-resolution plot saved: {out_dir}/optimized_adaptive_control.png")
 
-# ========= 性能评估 =========
-print("\n" + "="*70)
+# 性能评估
+print("\n" + "☆"*70)
 print("PERFORMANCE EVALUATION")
-print("="*70)
+print("☆"*70)
 
 success_criteria = {
     "Stability": final_err < 0.3,
@@ -393,3 +393,4 @@ elif passed >= 3:
     print("\n✓ CONTROL SUCCESSFUL - Room for improvement")
 else:
     print("\n⚠ Control needs further tuning")
+
