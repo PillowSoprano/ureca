@@ -18,7 +18,7 @@ import envs.mpctools as mpc
 
 class waste_water_system(gym.Env):
 
-    def __init__(self, ref = np.array([1, 2])):
+    def __init__(self, ref = np.array([1, 2]), Nx: int | None = None):
         self.t = 0
         self.real_world_time = 0  # second
 
@@ -28,7 +28,7 @@ class waste_water_system(gym.Env):
         self.sampling_steps = int(self.sampling_period/self.h)
         self.delay = 0
         Delta = 1
-        Nx = 145
+        Nx = 145 if Nx is None else int(Nx)
         Nu = 16
         try:
             self.x0 = np.loadtxt('envs/ss_open.txt')
@@ -36,6 +36,13 @@ class waste_water_system(gym.Env):
         except:
             self.x0 = np.loadtxt('ss_open.txt')
             data = np.loadtxt('Inf_dry_2006.txt')
+
+        x0_len = self.x0.shape[0]
+        if x0_len != Nx:
+            raise ValueError(
+                f"Steady-state length {x0_len} does not match Nx={Nx}. "
+                "Update the Nx argument (and related simulator settings) to align with the provided steady-state file."
+            )
         self.observed_dims = [21, 59]
 
         self.Q0 = data[:, 14][:, np.newaxis]
