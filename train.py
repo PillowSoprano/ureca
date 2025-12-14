@@ -12,32 +12,35 @@ import torch
 import os
 
 import argparse
+from data_loader import build_wastewater_datasets
 
 
 parparser = argparse.ArgumentParser()
 parparser.add_argument('method',type=str)
 parparser.add_argument('model',type=str)
+parparser.add_argument('--dataset', type=str, default='sim', choices=['sim', 'wastewater', 'wastewater-sim'])
+parparser.add_argument('--influent-profile', type=str, default='dry')
 
 condition = parparser.parse_args()
 
 
-def main():     
+def main():
     import args_new as new_args
     args = new_args.args
+    dataset_flag = condition.dataset
 
     if condition.model == 'cartpole':
         from envs.cartpole import CartPoleEnv_adv as dreamer
     if condition.model == 'cartpole_V':
         from envs.cartpole_V import CartPoleEnv_adv as dreamer
-        
+
     if condition.model == 'half_cheetah':
-        # from envs.half_cheetah_cost import HalfCheetahEnv_cost as dreamer
         dreamer = gym.make('HalfCheetah-v2')
     args['env'] = condition.model
 
-    
 
-    args = dict(args,**new_args.ENV_PARAMS[condition.model])
+
+    args = dict(args,**new_args.ENV_PARAMS.get(condition.model, {}))
 
 
     if condition.method == 'mamba':
@@ -67,13 +70,39 @@ def main():
         args.setdefault('use_action', False)
 
     args['continue_training'] = True
-    
+
+    wastewater_sets = None
+    if condition.dataset.startswith('wastewater'):
+        args = dict(args, **new_args.ENV_PARAMS['wastewater'])
+        args['env'] = 'wastewater'
+        if condition.dataset == 'wastewater':
+            wastewater_sets = build_wastewater_datasets(
+                steady_path=new_args.WASTEWATER_DATA['steady_state_path'],
+                influent_paths=new_args.WASTEWATER_DATA['influent_paths'],
+                profile_key=condition.influent_profile,
+                seq_length=new_args.WASTEWATER_DATA['seq_length'],
+                prediction_horizons=new_args.WASTEWATER_DATA['prediction_horizons'],
+                train_frac=new_args.WASTEWATER_DATA['train_frac'],
+                val_frac=new_args.WASTEWATER_DATA['val_frac'],
+                expected_state_dim=new_args.WASTEWATER_DATA['expected_state_dim'],
+                expected_influent_dim=new_args.WASTEWATER_DATA['expected_influent_dim'],
+                normalize=new_args.WASTEWATER_DATA['normalize'],
+            )
+        else:
+            from waste_water_system import waste_water_system as dreamer
+
     for i in range(10):
-        env = dreamer()
-        env = env.unwrapped  
-        args['state_dim'] = env.observation_space.shape[0]
-        args['act_dim'] = env.action_space.shape[0]
-        args['control'] =  False
+        if condition.dataset == 'wastewater':
+            env = None
+            args['state_dim'] = new_args.WASTEWATER_DATA['expected_state_dim']
+            args['act_dim'] = new_args.WASTEWATER_DATA['expected_influent_dim']
+            args['control'] = False
+        else:
+            env = dreamer()
+            env = env.unwrapped
+            args['state_dim'] = env.observation_space.shape[0]
+            args['act_dim'] = env.action_space.shape[0]
+            args['control'] =  False
 
         fold_path = 'save_model/'+condition.method+'/'+str(condition.model)
         if not os.path.exists(fold_path):
@@ -88,24 +117,21 @@ def main():
         
         model = Koopman_Desko(args)
         args['times_training'] = i
-        train(args,model,env,i)
+        train(args,model,env,i,wastewater_sets)
 
         if not args['continue_training']:
             break
 
-def train(args,model,env,i):
+def train(args,model,env,i,wastewater_sets=None):
     # print(condition.model)
-    if not args['import_saved_data']:
-        # model.parameter_restore(args)
+    if wastewater_sets is not None:
+        x_train, x_val, x_test, test_draw = wastewater_sets
+    elif not args['import_saved_data']:
         replay_memory = ReplayMemory(args,env, predict_evolution=True)
-        #############################00000000000#########################
         x_train = replay_memory.dataset_train
-        #############################00000000000#########################
         x_val = replay_memory.val_subset
         x_test = replay_memory.dataset_test
         test_draw = replay_memory.dataset_test_draw
-    
-    #
     else:
         x_train   = torch.load(args['SAVE_TRAIN'])
         x_val     = torch.load(args['SAVE_VAL'])
@@ -132,7 +158,8 @@ def train(args,model,env,i):
         
         if(e%50==0):
             print("draw...", flush=True)
-            for x,u in test_data:
+            for batch in test_data:
+                x, u = batch[0], batch[1]
                 _,_ = model.pred_forward_test(x.float(),u.float(),True,args,e)
         loss.append(model.loss_store)
         loss_t.append(model.loss_store_t)   

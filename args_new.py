@@ -33,6 +33,24 @@ args.setdefault('eig_margin', 0.0)  # 谱约束边际
 args.setdefault('grad_clip', 1.0)   # 梯度裁剪
 args.setdefault('use_action', False)# 是否把动作拼进输入一起建模
 
+# Wastewater dataset defaults
+WASTEWATER_DATA = {
+    'steady_state_path': './ss_open.txt',
+    'influent_paths': {
+        'dry': './Inf_dry_2006.txt',
+        'dry_const': './Inf_dry_constQ.txt',
+        'rain': './inf_rain.txt',
+        'storm': './inf_strm.txt',
+    },
+    'expected_state_dim': 156,
+    'expected_influent_dim': 15,
+    'seq_length': 96,
+    'prediction_horizons': [24, 48],
+    'train_frac': 0.7,
+    'val_frac': 0.15,
+    'normalize': True,
+}
+
 ENV_PARAMS = {
 'cartpole':
 {
@@ -102,6 +120,20 @@ ENV_PARAMS = {
         'R':np.diag([0.1]),
         'P':np.diag([2000,0,0,0]), # TODO: TOO LARGE MAY FAIL
     },
+}
+,'wastewater':
+{
+    'pred_horizon': 48,
+    'control_horizon':48,
+    'old_horizon':48,
+    'latent_dim': 8,
+    'h_dim': 64,
+    'z_dim': 16,
+    'disturbance' : 0,
+    'state_dim': WASTEWATER_DATA['expected_state_dim'],
+    'act_dim': WASTEWATER_DATA['expected_influent_dim'],
+    'apply_state_constraints': False,
+    'apply_action_constraints': False,
 }
 }
 

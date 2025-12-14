@@ -1,17 +1,24 @@
 # compare_mamko_kovae.py  (fixed: single dataset, log plots, RMSE table)
 import os, numpy as np, torch, matplotlib.pyplot as plt
+import argparse
 from torch.utils.data import DataLoader
 import args_new as new_args
 from replay_fouling import ReplayMemory
+from data_loader import build_wastewater_datasets
 os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 plt.rcParams["figure.dpi"]=150
 
-MODEL = "cartpole"
+parser = argparse.ArgumentParser()
+parser.add_argument('--dataset', type=str, default='sim', choices=['sim', 'wastewater'])
+parser.add_argument('--influent-profile', type=str, default='dry')
+args_cli = parser.parse_args()
+
+MODEL = "wastewater" if args_cli.dataset == 'wastewater' else "cartpole"
 METHODS = ["kovae","mamba"]
 OUTDIR = f"loss/compare/{MODEL}"
 
 def get_args(method):
-    args = dict(new_args.args, **new_args.ENV_PARAMS[MODEL])
+    args = dict(new_args.args, **new_args.ENV_PARAMS.get(MODEL, {}))
     args["env"] = MODEL
     args["method"] = method
     fold = f"save_model/{method}/{MODEL}"
@@ -37,8 +44,8 @@ def rmse_curve(model, test_draw, args, H=100):
     dl = DataLoader(test_draw, batch_size=1, shuffle=False, drop_last=False)
     SSE = np.zeros(H, dtype=np.float64); N = np.zeros(H, dtype=np.int64)
     with torch.no_grad():
-        for x,u in dl:
-            x,u = x.float(), u.float()
+        for batch in dl:
+            x,u = batch[0].float(), batch[1].float()
             xhat,_ = model.pred_forward_test(x,u,False,args,-1)
             T = min(x.shape[1], xhat.shape[1], H)
             e = (x[:,:T,:]-xhat[:,:T,:]).cpu().numpy()[0]  # [T,D]
@@ -64,14 +71,33 @@ def main():
     os.makedirs(OUTDIR, exist_ok=True)
 
     # 1) 只生成一次环境和数据
-    from envs.cartpole import CartPoleEnv_adv as dreamer
-    env = dreamer().unwrapped
-    base_args = dict(new_args.args, **new_args.ENV_PARAMS[MODEL])
-    base_args["state_dim"] = env.observation_space.shape[0]
-    base_args["act_dim"]   = env.action_space.shape[0]
-    base_args["env"] = MODEL
-    RP = ReplayMemory(base_args, env, predict_evolution=True)
-    test_draw = RP.dataset_test_draw
+    if args_cli.dataset == 'wastewater':
+        base_args = dict(new_args.args, **new_args.ENV_PARAMS['wastewater'])
+        base_args["env"] = MODEL
+        train_set, val_set, test_set, draw_set = build_wastewater_datasets(
+            steady_path=new_args.WASTEWATER_DATA['steady_state_path'],
+            influent_paths=new_args.WASTEWATER_DATA['influent_paths'],
+            profile_key=args_cli.influent_profile,
+            seq_length=new_args.WASTEWATER_DATA['seq_length'],
+            prediction_horizons=new_args.WASTEWATER_DATA['prediction_horizons'],
+            train_frac=new_args.WASTEWATER_DATA['train_frac'],
+            val_frac=new_args.WASTEWATER_DATA['val_frac'],
+            expected_state_dim=new_args.WASTEWATER_DATA['expected_state_dim'],
+            expected_influent_dim=new_args.WASTEWATER_DATA['expected_influent_dim'],
+            normalize=new_args.WASTEWATER_DATA['normalize'],
+        )
+        test_draw = draw_set
+        base_args["state_dim"] = new_args.WASTEWATER_DATA['expected_state_dim']
+        base_args["act_dim"] = new_args.WASTEWATER_DATA['expected_influent_dim']
+    else:
+        from envs.cartpole import CartPoleEnv_adv as dreamer
+        env = dreamer().unwrapped
+        base_args = dict(new_args.args, **new_args.ENV_PARAMS[MODEL])
+        base_args["state_dim"] = env.observation_space.shape[0]
+        base_args["act_dim"]   = env.action_space.shape[0]
+        base_args["env"] = MODEL
+        RP = ReplayMemory(base_args, env, predict_evolution=True)
+        test_draw = RP.dataset_test_draw
 
     # 2) 逐模型评估（共享同一 test_draw）
     RMSE = {}

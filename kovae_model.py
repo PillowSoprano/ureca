@@ -233,7 +233,10 @@ class Koopman_Desko:
 # ReplayMemory 数据集迭代返回的是 (x, u)。
 # 把它搬到 device，并按需要拼接。
 # 约定形状：x:[B,T,state_dim], u:[B,T,act_dim] 或 [B,act_dim]
-        x, u = batch
+        if isinstance(batch, (list, tuple)):
+            x, u = batch[0], batch[1]
+        else:
+            x, u = batch
         x = x.float().to(self.device)
         u = u.float().to(self.device)
         if self.use_action:
