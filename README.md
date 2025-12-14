@@ -22,7 +22,7 @@ to train the model.
 Method can be **DKO** **mamba** **MLP**;
 Environment can be **cartpole** and **cartpole_V**.
 
-For the control process, you can run 
+For the control process, you can run
 ```bash
 python control.py {method} {environment}
 ```
@@ -30,5 +30,9 @@ to evaluate the control performance of the given model.
 
 Method can be **DKO** **mamba** **MLP**;
 Environment can be **cartpole** and **cartpole_V**.
+
+# Wastewater workflow
+
+For details on preparing the wastewater influent datasets, choosing configuration flags (including hybrid mode), and running training or resilience evaluation against the wastewater environment, see [`docs/wastewater.md`](docs/wastewater.md).
 
 
