@@ -23,7 +23,7 @@ osqp==0.6.7.post1
 packaging==24.1
 pandas==2.2.3
 pillow==10.4.0
-progressbar==2.5
+progressbar2==4.5.0
 pyparsing==3.1.4
 python-dateutil==2.9.0.post0
 pytz==2024.2
