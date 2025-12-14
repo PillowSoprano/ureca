@@ -124,6 +124,42 @@ ENV_PARAMS = {
         'R':np.diag([0.1]),
         'P':np.diag([2000,0,0,0]), # TODO: TOO LARGE MAY FAIL
     },
+},
+'waste_water':
+{
+    'pred_horizon': 20,      # 预测时域（污水处理系统动态较慢）
+    'control_horizon': 20,    # 控制时域
+    'old_horizon': 20,        # 历史观测时域
+    'latent_dim': 64,         # 潜变量维度
+    'd_conv': 10,             # Mamba卷积核尺寸
+    'delta': 10,              # 离散化步长
+    'total_data_size': 10000, # 训练数据总量
+    'total_data_size_test': 2000,  # 测试数据量
+    'max_ep_steps': 1000,     # 最大episode步数
+    'max_ep_steps_test': 500, # 测试最大步数
+    'optimize_step': 50,      # 优化步长
+    'loop_test': 500,         # 测试循环次数
+    'hidden_dim': 256,        # 隐层维度
+    'h_dim': 256,             # GRU隐层维度（用于KoVAE）
+    'z_dim': 64,              # KoVAE潜变量维度
+    'disturbance': 0,         # 扰动水平
+    'mamba':{
+        # MPC权重矩阵（针对156维状态，4维动作）
+        # 这里使用简化的对角矩阵，实际应根据具体状态变量调整
+        'Q': np.eye(156) * 1.0,      # 状态权重（156x156）
+        'R': np.eye(4) * 0.1,         # 控制输入权重（4x4）
+        'P': np.eye(156) * 10.0,      # 终端状态权重（156x156）
+    },
+    'DKO':{
+        'Q': np.eye(156) * 1.0,
+        'R': np.eye(4) * 0.1,
+        'P': np.eye(156) * 10.0,
+    },
+    'MLP':{
+        'Q': np.eye(156) * 1.0,
+        'R': np.eye(4) * 0.1,
+        'P': np.eye(156) * 5.0,
+    },
 }
 }
 
