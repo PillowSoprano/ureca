@@ -32,6 +32,14 @@ args.setdefault('eig_target', '<=1')# 谱约束目标：'< =1' 或 1.0
 args.setdefault('eig_margin', 0.0)  # 谱约束边际
 args.setdefault('grad_clip', 1.0)   # 梯度裁剪
 args.setdefault('use_action', False)# 是否把动作拼进输入一起建模
+args.setdefault('training_mode', 'standard')  # 'standard' or 'hybrid'
+args.setdefault('sim_rollout_length', 50)
+args.setdefault('sim_step_size', 1)
+args.setdefault('sim_noise_scale', 0.0)
+args.setdefault('sim_fouling_perturb', 0.0)
+args.setdefault('sim_batches', 8)
+args.setdefault('control_weight', 0.0)
+args.setdefault('sim_weight', 0.0)
 
 ENV_PARAMS = {
 'cartpole':

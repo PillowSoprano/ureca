@@ -231,9 +231,15 @@ class Koopman_Desko:
 
     def _make_batch(self, batch):
 # ReplayMemory 数据集迭代返回的是 (x, u)。
-# 把它搬到 device，并按需要拼接。
-# 约定形状：x:[B,T,state_dim], u:[B,T,act_dim] 或 [B,act_dim]
-        x, u = batch
+# HybridDataset 则返回 (x, u, sim, mask)。
+        if len(batch) == 4:
+            x, u, sim, mask = batch
+            sim = sim.float().to(self.device)
+            mask = mask.float().to(self.device)
+        else:
+            x, u = batch
+            sim = None
+            mask = None
         x = x.float().to(self.device)
         u = u.float().to(self.device)
         if self.use_action:
@@ -244,15 +250,15 @@ class Koopman_Desko:
             xin = torch.cat([x, u], dim=-1)
         else:
             xin = x
-        return x, u, xin
+        return x, u, xin, sim, mask
 
     @torch.no_grad()
     def pred_forward_test(self, x, u, is_draw, args, epoch):
 # 给 train.py 调用的测试接口，这里简单做一次前向并返回预测！
 # 若要画图，可以在 is_draw 为 True 时保存图片到与工程一致的目录！
-        
+
         self.model.eval()
-        x, u, xin = self._make_batch((x, u))
+        x, u, xin, _, _ = self._make_batch((x, u))
         loss, xhat, aux = self.model(xin, self.alpha, self.beta, self.gamma)
         return xhat.detach().cpu(), aux
 
@@ -269,10 +275,21 @@ class Koopman_Desko:
         self.model.train()
         running = 0.0    # 累计损失
         n = 0    # 样本数
+        cw = float(args.get('control_weight', 0.0))
+        sw = float(args.get('sim_weight', 0.0))
         for batch in train_loader:
-            x, u, xin = self._make_batch(batch)
+            x, u, xin, sim, mask = self._make_batch(batch)
             # 前向传播
             loss, xhat, aux = self.model(xin, self.alpha, self.beta, self.gamma)
+            if cw > 0:
+                control_penalty = (u ** 2).mean()
+                loss = loss + cw * control_penalty
+                aux['L_ctrl'] = float(control_penalty)
+            if sw > 0 and sim is not None and mask is not None:
+                sim_loss = nn.functional.mse_loss(xhat, sim, reduction='none')
+                sim_loss = (sim_loss.mean(dim=(1, 2)) * mask.squeeze(-1)).mean()
+                loss = loss + sw * sim_loss
+                aux['L_sim'] = float(sim_loss)
 
             # 反向传播
             self.optimizer.zero_grad(set_to_none=True)
@@ -295,8 +312,12 @@ class Koopman_Desko:
         n_v = 0
         with torch.no_grad():
             for batch in val_loader:
-                x, u, xin = self._make_batch(batch)
-                loss, _, _ = self.model(xin, self.alpha, self.beta, self.gamma)
+                x, u, xin, sim, mask = self._make_batch(batch)
+                loss, xhat, _ = self.model(xin, self.alpha, self.beta, self.gamma)
+                if sw > 0 and sim is not None and mask is not None:
+                    sim_loss = nn.functional.mse_loss(xhat, sim, reduction='none')
+                    sim_loss = (sim_loss.mean(dim=(1, 2)) * mask.squeeze(-1)).mean()
+                    loss = loss + sw * sim_loss
                 running_v += loss.item() * x.size(0)
                 n_v += x.size(0)
         self.loss_store_t = running_v / max(1, n_v)
