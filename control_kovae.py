@@ -4,6 +4,11 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import args_new as new_args
+from mbr_actions import (
+    MBR_ACTUATOR_INDEX,
+    denormalize_mbr_action,
+    summarize_actuators,
+)
 
 METHOD = "kovae"
 MODEL  = "cartpole"
@@ -19,7 +24,9 @@ else:
     raise ValueError("only cartpole variants")
 
 env = dreamer().unwrapped
-u_max = float(env.action_space.high[0])
+action_low = getattr(env, "action_low", env.action_space.low)
+action_high = getattr(env, "action_high", env.action_space.high)
+u_max = float(np.max(action_high))
 X_REF = np.zeros(4, dtype=np.float32)
 
 print("="*70)
@@ -153,6 +160,22 @@ class OptimizedLQRController:
 
 controller = OptimizedLQRController(u_max, env.theta_threshold_radians)
 
+
+def map_mbr_action(u_raw):
+    """Map raw controller output to simulator units for both 1D and MBR cases."""
+
+    u_arr = np.asarray(u_raw, dtype=float).flatten()
+    if u_arr.size == 0:
+        return np.zeros_like(action_low)
+
+    if action_low.shape[0] == 4:
+        if u_arr.size == 1:
+            u_arr = np.repeat(u_arr, 4)
+        return denormalize_mbr_action(u_arr, action_low, action_high)
+
+    clipped = np.clip(u_arr[0], -u_max, u_max)
+    return np.array([clipped], dtype=float)
+
 # 智能初始化
 print("\nSearching for optimal initial state...")
 best_obs = None
@@ -202,9 +225,10 @@ stabilization_time = None
 
 for t in range(T_sim):
     u = controller(obs)
-    us.append(u)
-    
-    step_out = env.step(np.array([u]))
+    u_env = map_mbr_action(u)
+    us.append(u_env.copy())
+
+    step_out = env.step(u_env)
     if isinstance(step_out, tuple) and len(step_out) == 5:
         obs, r, terminated, truncated, info = step_out
         done = terminated or truncated
@@ -216,10 +240,10 @@ for t in range(T_sim):
     # 智能输出
     if t < 50:
         if t % 10 == 0:
-            print(f"t={t:4d}: x={obs[0]:7.4f} m, θ={obs[2]:7.4f} rad ({np.degrees(obs[2]):6.2f}°), u={u:7.3f} N")
+            print(f"t={t:4d}: x={obs[0]:7.4f} m, θ={obs[2]:7.4f} rad ({np.degrees(obs[2]):6.2f}°), u={u_env}")
     elif t % 100 == 0:
         err = np.linalg.norm(obs - X_REF)
-        print(f"t={t:4d}: x={obs[0]:7.4f}, θ={obs[2]:7.4f} ({np.degrees(obs[2]):6.2f}°), |err|={err:.4f}, u={u:7.3f}")
+        print(f"t={t:4d}: x={obs[0]:7.4f}, θ={obs[2]:7.4f} ({np.degrees(obs[2]):6.2f}°), |err|={err:.4f}, u={u_env}")
     
     if done:
         print(f"\n⚠ Episode terminated at t={t}")
@@ -266,7 +290,13 @@ print(f"  Angular vel: {xs[-1,3]:8.5f} rad/s")
 print(f"\nState ranges:")
 print(f"  Position:    [{xs[:,0].min():7.4f}, {xs[:,0].max():7.4f}] m")
 print(f"  Angle:       [{np.degrees(xs[:,2].min()):6.2f}°, {np.degrees(xs[:,2].max()):6.2f}°]")
-print(f"  Control:     [{us.min():6.2f}, {us.max():6.2f}] N  (max available: ±{u_max:.1f} N)")
+if us.shape[1] == 4:
+    stats = summarize_actuators(us, action_low, action_high)
+    print("  Actuator utilization (% of span, saturation %):")
+    for name, vals in stats.items():
+        print(f"    {name:<15} min={vals['min']*100:5.1f}% mean={vals['mean']*100:5.1f}% max={vals['max']*100:5.1f}% sat={vals['saturation_pct']:5.1f}%")
+else:
+    print(f"  Control:     [{us.min():6.2f}, {us.max():6.2f}]  (max available: ±{u_max:.1f})")
 
 errors = np.linalg.norm(xs - X_REF, axis=1)
 print(f"\nTracking error statistics:")
@@ -332,7 +362,11 @@ for i in range(4):
         axs[i].legend(loc='upper right', fontsize=9)
 
 # Control signal
-axs[4].plot(tt[:-1], us, linewidth=2.5, color=colors[4], alpha=0.85, label='Control signal')
+if us.ndim == 2 and us.shape[1] == 4:
+    for name, idx in MBR_ACTUATOR_INDEX.items():
+        axs[4].plot(tt[:-1], us[:, idx], linewidth=2.0, alpha=0.85, label=name)
+else:
+    axs[4].plot(tt[:-1], us.squeeze(), linewidth=2.5, color=colors[4], alpha=0.85, label='Control signal')
 axs[4].axhline(0, color='black', linestyle='--', alpha=0.3, linewidth=1.5)
 axs[4].axhline(u_max, color='red', linestyle=':', alpha=0.5, linewidth=1.5, label=f'Saturation (±{u_max:.0f}N)')
 axs[4].axhline(-u_max, color='red', linestyle=':', alpha=0.5, linewidth=1.5)

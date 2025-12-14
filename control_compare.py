@@ -3,6 +3,7 @@ import os, numpy as np, cvxpy as cp, torch, matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 import args_new as new_args
 from replay_fouling import ReplayMemory
+from mbr_actions import clip_mbr_action, summarize_actuators
 
 plt.rcParams["figure.dpi"]=150
 
@@ -158,9 +159,11 @@ def build_policy(method):
     # env
     from envs.cartpole import CartPoleEnv_adv as dreamer
     env = dreamer().unwrapped
+    action_low = getattr(env, "action_low", env.action_space.low)
+    action_high = getattr(env, "action_high", env.action_space.high)
     args["state_dim"] = env.observation_space.shape[0]
     args["act_dim"]   = env.action_space.shape[0]
-    u_max = float(env.action_space.high[0])
+    u_max = np.asarray(action_high, dtype=float)
 
     # model
     model = load_model(method, args)
@@ -197,6 +200,9 @@ def build_policy(method):
     # 输入方向（角度维=2）
     J = C @ B
     SIGN_U = float(np.sign(J[2, 0]) or 1.0)
+
+    def clip_action(u_vec):
+        return clip_mbr_action(u_vec, action_low, action_high) if u_vec.shape[-1] == 4 else np.clip(u_vec, -u_max, u_max)
 
     # 代价矩阵（只罚 theta/thetadot）
     Q = new_args.ENV_PARAMS[MODEL]["MLP"]["Q"].astype(np.float32) * 0.0
@@ -240,16 +246,16 @@ def build_policy(method):
         if Udev.value is None:
             return np.zeros((m,), dtype=float)
         u0 = (Udev.value[:, 0] + u_ss) * SIGN_U
-        return np.clip(u0, -u_max, u_max)
+        return clip_action(u0)
 
-    return env, mpc_control
+    return env, mpc_control, action_low, action_high, u_max
 
 def simulate(env, policy, T=T_SIM):
     rst = env.reset()
     obs = rst[0] if isinstance(rst, tuple) else rst
     xs, us = [], []
     for t in range(T):
-        u = policy(obs)
+        u = clip_action(np.array(policy(obs), dtype=float).reshape(-1))
         step = env.step(u)
         if len(step) == 5:
             obs, r, terminated, truncated, info = step
@@ -262,7 +268,7 @@ def simulate(env, policy, T=T_SIM):
             break
     return np.array(xs), np.array(us)
 
-def metrics(xs, us, u_max):
+def metrics(xs, us, u_max, action_low=None, action_high=None):
     T = xs.shape[0]
     theta = xs[:, 2]
     thetad = xs[:, 3]
@@ -274,6 +280,16 @@ def metrics(xs, us, u_max):
             break
     last = slice(max(0, T - 50), T)
     ss_abs = np.mean(np.abs(xs[last, :]), axis=0)    # steady-state |x| ave
+    if us.ndim == 2 and us.shape[1] == 4 and action_low is not None and action_high is not None:
+        util = summarize_actuators(us, action_low, action_high)
+        u_mean = float(np.mean(np.abs(us)))
+        sat = {k: v["saturation_pct"] for k, v in util.items()}
+        return {
+            "settling_step": -1 if settle is None else int(settle),
+            "ss_abs_x": ss_abs.tolist(),
+            "u_mean_abs": u_mean,
+            "u_sat_percent": sat,
+        }
     u_sat = np.mean(np.abs(us) >= (0.999 * u_max)) * 100.0
     u_mean = float(np.mean(np.abs(us)))
     return {
@@ -290,8 +306,7 @@ def main():
     rows = []
     for method in METHODS:
         print("===", method, "===")
-        env, ctrl = build_policy(method)
-        u_max = float(env.action_space.high[0])
+        env, ctrl, action_low, action_high, u_max = build_policy(method)
         xs, us = simulate(env, ctrl, T_SIM)
 
         # plot (time-series，保持线性坐标更直观；如需 log，可对单维加 ax.set_yscale('log'))
@@ -306,16 +321,20 @@ def main():
         print("saved", pth)
 
         # metrics
-        m = metrics(xs, us, u_max)
+        m = metrics(xs, us, u_max, action_low=action_low, action_high=action_high)
         rows.append((method, m))
 
     # write metrics
     with open(f"{outdir}/metrics_control.txt", "w") as f:
         for method, m in rows:
+            if isinstance(m["u_sat_percent"], dict):
+                sat_str = ", ".join(f"{k}:{v:.2f}%" for k, v in m["u_sat_percent"].items())
+            else:
+                sat_str = f"{m['u_sat_percent']:.2f}%"
             f.write(f"{method}: settling_step={m['settling_step']}, "
                     f"ss_abs_x={m['ss_abs_x']}, "
                     f"u_mean_abs={m['u_mean_abs']:.4f}, "
-                    f"u_sat%={m['u_sat_percent']:.2f}\n")
+                    f"u_sat%={sat_str}\n")
     print("Saved:", f"{outdir}/metrics_control.txt")
 
 if __name__ == "__main__":

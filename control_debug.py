@@ -6,6 +6,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 import args_new as new_args
+from mbr_actions import MBR_ACTUATOR_INDEX, denormalize_mbr_action, summarize_actuators
 
 METHOD = "kovae"
 MODEL  = "cartpole"
@@ -22,7 +23,20 @@ else:
     raise ValueError("only cartpole variants")
 
 env = dreamer().unwrapped
-u_max = float(env.action_space.high[0])
+action_low = getattr(env, "action_low", env.action_space.low)
+action_high = getattr(env, "action_high", env.action_space.high)
+u_max = float(np.max(action_high))
+
+
+def clip_action(u_raw):
+    arr = np.asarray(u_raw, dtype=float).flatten()
+    if arr.size == 0:
+        return np.zeros_like(action_low)
+    if action_low.shape[0] == 4:
+        if arr.size == 1:
+            arr = np.repeat(arr, 4)
+        return denormalize_mbr_action(arr, action_low, action_high)
+    return np.array([np.clip(arr[0], -u_max, u_max)], dtype=float)
 
 print("="*70)
 print("ENVIRONMENT DIAGNOSTICS")
@@ -49,7 +63,7 @@ print(f"Initial state: {obs}")
 
 xs_zero, us_zero = [obs.copy()], []
 for t in range(100):
-    u = np.array([0.0])  # ！！！零控制
+    u = clip_action(0.0)  # ！！！零控制
     step_out = env.step(u)
     if isinstance(step_out, tuple) and len(step_out) == 5:
         obs, r, terminated, truncated, info = step_out
@@ -87,9 +101,9 @@ Kp = np.array([1.0, 0.5, 10.0, 2.0])
 for t in range(200):
     err = obs - X_REF
     u = -Kp @ err
-    u = np.clip(u, -u_max, u_max)
-    
-    step_out = env.step(np.array([u]))
+    u = clip_action(u)
+
+    step_out = env.step(u)
     if isinstance(step_out, tuple) and len(step_out) == 5:
         obs, r, terminated, truncated, info = step_out
         done = terminated or truncated
@@ -133,9 +147,9 @@ xs_lqr, us_lqr = [obs.copy()], []
 for t in range(300):
     err = obs - X_REF
     u = -K_lqr @ err
-    u = np.clip(u, -u_max, u_max)
-    
-    step_out = env.step(np.array([u]))
+    u = clip_action(u)
+
+    step_out = env.step(u)
     if isinstance(step_out, tuple) and len(step_out) == 5:
         obs, r, terminated, truncated, info = step_out
         done = terminated or truncated
@@ -164,6 +178,11 @@ for t in range(300):
 xs_lqr = np.array(xs_lqr)
 us_lqr = np.array(us_lqr)
 print(f"Survived {len(xs_lqr)} steps with LQR control")
+if action_low.shape[0] == 4:
+    util = summarize_actuators(np.array(us_lqr), action_low, action_high)
+    print("\nActuator utilization during LQR run:")
+    for name, vals in util.items():
+        print(f"  {name:<15} min={vals['min']*100:5.1f}% mean={vals['mean']*100:5.1f}% max={vals['max']*100:5.1f}% sat={vals['saturation_pct']:5.1f}%")
 
 # 可视化对比
 fig, axs = plt.subplots(5, 3, figsize=(16, 14), sharex='col')
@@ -200,7 +219,12 @@ for col, (title, xs, us) in enumerate(datasets):
     
     # 控制量
     tt_u = np.arange(len(us))
-    axs[4, col].plot(tt_u, us, color=colors[4], linewidth=1.5)
+    u_arr = np.asarray(us)
+    if u_arr.ndim == 2 and u_arr.shape[1] == 4:
+        for name, idx in MBR_ACTUATOR_INDEX.items():
+            axs[4, col].plot(tt_u, u_arr[:, idx], linewidth=1.5, label=name)
+    else:
+        axs[4, col].plot(tt_u, u_arr.squeeze(), color=colors[4], linewidth=1.5)
     axs[4, col].axhline(0, color='gray', linestyle=':', alpha=0.5)
     axs[4, col].axhline(u_max, color='red', linestyle=':', alpha=0.4)
     axs[4, col].axhline(-u_max, color='red', linestyle=':', alpha=0.4)

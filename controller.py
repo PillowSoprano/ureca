@@ -8,6 +8,7 @@ import time
 import torch
 from einops import rearrange, repeat, einsum
 import casadi as ca
+from mbr_actions import clip_mbr_action, denormalize_mbr_action, MBR_ACTUATOR_INDEX
 
 
 
@@ -30,6 +31,14 @@ class Upper_MPC_mamba(object):
 
         self.data_save_x = []
         self.data_save_u = []
+
+    def _finalize_action(self, u):
+        """Scale and clip control moves to simulator bounds."""
+
+        u = u * self.scale_u + self.shift_u
+        if self.args.get("act_dim", 1) == 4 and "a_bound_low" in self.args:
+            u = clip_mbr_action(u, self.args["a_bound_low"], self.args["a_bound_high"])
+        return u
 
     def _get_set_point_u(self):
         pass
@@ -151,13 +160,13 @@ class Upper_MPC_mamba(object):
         if self.prob.status == OPTIMAL or self.prob.status == OPTIMAL_INACCURATE:
             su = u
             self.u_save = u
-            u = u * self.scale_u + self.shift_u
+            u = self._finalize_action(u)
 
 
         else:
             print("Error: Cannot solve mpc..")
             su = u
-            u = u * self.scale_u + self.shift_u
+            u = self._finalize_action(u)
 
         #--------------------store the old data------------------------#
         self.data_save_x.append(x_0)
@@ -297,11 +306,15 @@ class Upper_MPC_DKO(object):
         if self.prob.status == OPTIMAL or self.prob.status == OPTIMAL_INACCURATE:
             self.u_save = u
             u = u * self.scale_u + self.shift_u
-            
+            if self.a_dim == 4 and "a_bound_low" in self.args:
+                u = clip_mbr_action(u, self.args["a_bound_low"], self.args["a_bound_high"])
+
 
         else:
             print("Error: Cannot solve mpc..")
             u = u * self.scale_u + self.shift_u
+            if self.a_dim == 4 and "a_bound_low" in self.args:
+                u = clip_mbr_action(u, self.args["a_bound_low"], self.args["a_bound_high"])
 
         return u
     
@@ -468,7 +481,9 @@ class Upper_MPC_MLP(object):
 
         self.x0_guess = np.array(ca.vertsplit(sol['x'])).flatten()
         u_out  = Pred_U[:,0] * self.scale_u + self.shift_u
-        
+        if self.a_dim == 4 and "a_bound_low" in self.args:
+            u_out = clip_mbr_action(u_out, self.args["a_bound_low"], self.args["a_bound_high"])
+
         return u_out
     
     def restore(self):
