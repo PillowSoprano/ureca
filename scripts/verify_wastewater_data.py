@@ -21,7 +21,11 @@ INFLOW_FILES = [
 ]
 STEADY_STATE_FILE = "ss_open.txt"
 EXPECTED_INFLOW_COLS = 15
-EXPECTED_STEADY_STATE = 145
+# Some datasets provide a 145-length steady-state vector (matching the
+# default `Nx=145` in `waste_water_system.py`), while others include an
+# extended 156-length variant. Treat either length as valid so the check
+# remains helpful across both sources.
+EXPECTED_STEADY_STATE = (145, 156)
 
 
 def _describe_array(name: str, arr: np.ndarray) -> str:
@@ -65,8 +69,13 @@ def _check_steady_state(path: Path) -> Tuple[bool, str]:
     if data.ndim != 1:
         return False, f"expected 1-D vector, got shape {data.shape}"
 
-    ok_len = data.shape[0] == EXPECTED_STEADY_STATE
-    length_msg = "length OK" if ok_len else f"expected {EXPECTED_STEADY_STATE} entries"
+    length = data.shape[0]
+    ok_len = length in EXPECTED_STEADY_STATE
+    length_msg = (
+        f"length OK ({length} entries)"
+        if ok_len
+        else f"unexpected length {length}; expected one of {EXPECTED_STEADY_STATE}"
+    )
     return ok_len, f"{length_msg}; {_describe_array(path.name, data)}"
 
 
