@@ -3,6 +3,7 @@ import os, numpy as np, torch, matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 import args_new as new_args
 from replay_fouling import ReplayMemory
+from sim_interface import MBRTrajectorySimulator
 os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 plt.rcParams["figure.dpi"]=150
 
@@ -60,6 +61,29 @@ def maybe_load_loss(method):
     return (np.loadtxt(tr) if os.path.exists(tr) else None,
             np.loadtxt(va) if os.path.exists(va) else None)
 
+
+def sim_vs_model_error(model, args, steps=50, batches=4):
+    sim = MBRTrajectorySimulator(step_size=int(args.get('sim_step_size', 1)),
+                                 noise_scale=args.get('sim_noise_scale', 0.0),
+                                 fouling_perturb=args.get('sim_fouling_perturb', 0.0))
+    try:
+        seed = np.loadtxt('ss_open.txt')
+    except OSError:
+        seed = None
+
+    actions = np.random.uniform(low=sim.env.action_low,
+                                high=sim.env.action_high,
+                                size=(batches, steps, 4)).astype(np.float32)
+    rollout = sim.rollout(actions, start_state=seed)
+    states = rollout['states'][:, :steps]
+    actions_t = actions
+    x = torch.tensor(states, dtype=torch.float32)
+    u = torch.tensor(actions_t, dtype=torch.float32)
+    with torch.no_grad():
+        xhat, _ = model.pred_forward_test(x, u, False, args, -1)
+    diff = (xhat.numpy() - states) ** 2
+    return float(diff.mean())
+
 def main():
     os.makedirs(OUTDIR, exist_ok=True)
 
@@ -76,6 +100,7 @@ def main():
     # 2) 逐模型评估（共享同一 test_draw）
     RMSE = {}
     LOSSES = {}
+    SIM_ERR = {}
     for method in METHODS:
         args = get_args(method)
         args["state_dim"] = base_args["state_dim"]
@@ -84,6 +109,7 @@ def main():
         curve = rmse_curve(model, test_draw, args, H=100)
         RMSE[method] = curve
         LOSSES[method] = maybe_load_loss(method)
+        SIM_ERR[method] = sim_vs_model_error(model, args, steps=int(args.get("sim_rollout_length", 50)))
 
     # 3) Log-loss 曲线（仅参考）
     plt.figure(figsize=(10,4))
@@ -110,6 +136,8 @@ def main():
         for s in steps:
             line = f"RMSE@{s}: " + "  ".join([f"{m}={RMSE[m][s-1]:.6f}" for m in METHODS])
             print(line); f.write(line+"\n")
+        sim_line = "SimConsistency: " + "  ".join([f"{m}={SIM_ERR[m]:.6f}" for m in METHODS])
+        print(sim_line); f.write(sim_line+"\n")
     print("Saved:", f"{OUTDIR}/loss_compare_log.png", f"{OUTDIR}/rmse_curve_log.png", f"{OUTDIR}/metrics.txt")
 
 if __name__ == "__main__":
