@@ -10,8 +10,14 @@ Place the wastewater data in the repository root (or `envs/` with the same names
 Inf_dry_2006.txt   # dry-weather influent matrix shaped (1345, 15)
 inf_rain.txt       # rain scenario, shaped (15, 1345); transpose to (1345, 15) if needed
 inf_strm.txt       # storm scenario, shaped (15, 1345); transpose to (1345, 15) if needed
-ss_open.txt        # 145-element steady-state vector used to seed rollouts
+ss_open.txt        # steady-state vector used to seed rollouts (145- or 156-length depending on source)
 ```
+
+When working with the 156-length steady-state vector, double-check that your
+simulator configuration (e.g., `Nx` in `waste_water_system.py`) matches the
+dimension in the file. The verification script below accepts both 145- and
+156-length variants and will print the detected length so you can align the
+environment settings.
 
 Validate the files before training:
 
