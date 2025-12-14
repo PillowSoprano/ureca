@@ -13,6 +13,7 @@ import os
 
 import argparse
 from sim_interface import MBRTrajectorySimulator
+from logger import configure, logkv, dumpkvs
 
 
 parparser = argparse.ArgumentParser()
@@ -20,6 +21,34 @@ parparser.add_argument('method',type=str)
 parparser.add_argument('model',type=str)
 
 condition = parparser.parse_args()
+
+
+def build_scheduler(optimizer, args):
+    scheduler_type = args.get('lr_scheduler', 'none')
+    if scheduler_type == 'none' or optimizer is None:
+        return None
+    step_size = int(args.get('scheduler_step', 50))
+    gamma = float(args.get('scheduler_gamma', 0.5))
+    min_lr = float(args.get('scheduler_min_lr', 1e-6))
+    if scheduler_type == 'cosine':
+        return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=int(args.get('num_epochs', 100)), eta_min=min_lr)
+    if scheduler_type == 'plateau':
+        return torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=gamma, patience=step_size)
+    return torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
+
+
+def maybe_step_scheduler(model, args, metric=None):
+    scheduler = getattr(model, 'scheduler', None)
+    optimizer = getattr(model, 'optimizer', None)
+    if scheduler is None and optimizer is not None:
+        scheduler = build_scheduler(optimizer, args)
+        model.scheduler = scheduler
+    if scheduler is None:
+        return
+    if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+        scheduler.step(metric)
+    else:
+        scheduler.step()
 
 
 def main():     
@@ -68,7 +97,11 @@ def main():
         args.setdefault('use_action', False)
 
     args['continue_training'] = True
-    
+
+    if args.get('grid_sweep', False):
+        run_grid_sweeps(args, Koopman_Desko, dreamer)
+        return
+
     for i in range(10):
         env = dreamer()
         env = env.unwrapped
@@ -177,6 +210,46 @@ def build_hybrid_rollouts(args):
     val_sim = HybridDataset(torch.utils.data.Subset(dataset, list(range(mid))), sim_states=x_slices[:mid], has_sim=True)
     return train_sim, val_sim
 
+
+def run_grid_sweeps(args, KoopmanClass, dreamer_ctor):
+    """Run a lightweight sweep over a few hyperparameters and log the metrics."""
+
+    sweep_dir = os.path.join('log', 'grid_sweep', condition.method, condition.model)
+    configure(dir=sweep_dir, format_strs=['stdout', 'csv'])
+
+    batch_sizes = args.get('sweep_batch_sizes', [])
+    seq_lengths = args.get('sweep_seq_lengths', [])
+    latent_dims = args.get('sweep_latent_dims', [])
+
+    for bs in batch_sizes:
+        for seq in seq_lengths:
+            for latent in latent_dims:
+                sweep_args = dict(args)
+                sweep_args.update({
+                    'batch_size': bs,
+                    'pred_horizon': seq,
+                    'old_horizon': seq,
+                    'latent_dim': latent,
+                    'z_dim': latent,
+                    'num_epochs': args.get('sweep_epochs', 3),
+                })
+                env = dreamer_ctor()
+                env = env.unwrapped
+                sweep_args['state_dim'] = env.observation_space.shape[0]
+                sweep_args['act_dim'] = env.action_space.shape[0]
+                sweep_args['continue_training'] = False
+                model = KoopmanClass(sweep_args)
+                train(sweep_args, model, env, i=0)
+
+                logkv('batch_size', bs)
+                logkv('seq_length', seq)
+                logkv('latent_dim', latent)
+                logkv('train_loss', model.loss_store)
+                logkv('val_loss', model.loss_store_t)
+                logkv('method', condition.method)
+                logkv('env', condition.model)
+                dumpkvs()
+
 def train(args,model,env,i):
     # print(condition.model)
     if not args['import_saved_data']:
@@ -223,6 +296,7 @@ def train(args,model,env,i):
     for e in range(args['num_epochs']):
         print(f"[epoch {e}] training...", flush=True)
         model.learn(e,x_train,x_val,x_test,args)
+        maybe_step_scheduler(model, args, metric=model.loss_store_t)
         if(e%10==0):
             print("store!!!", flush=True)
             model.parameter_store(args)

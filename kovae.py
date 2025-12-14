@@ -4,19 +4,43 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
+def _build_activation(name: str):
+    name = (name or "tanh").lower()
+    if name == "relu":
+        return nn.ReLU()
+    if name == "gelu":
+        return nn.GELU()
+    if name == "elu":
+        return nn.ELU()
+    if name == "silu":
+        return nn.SiLU()
+    if name in ("none", "linear"):
+        return None
+    return nn.Tanh()
+
 # 编码器：把输入时间序列 x 映射到潜空间 z
 # 感觉这部分就是论文里说的 posterior q(z|x)？？
 class GRUEncoder(nn.Module):
-    def __init__(self, x_dim, h_dim, z_dim, num_layers=1):
+    def __init__(self, x_dim, h_dim, z_dim, num_layers=1, dropout=0.0, layer_norm=False, activation="tanh"):
         super().__init__()
         # 用 GRU 来提取时间依赖特征！
-        self.gru = nn.GRU(x_dim, h_dim, num_layers=num_layers, batch_first=True)
+        self.gru = nn.GRU(x_dim, h_dim, num_layers=num_layers, batch_first=True, dropout=dropout if num_layers > 1 else 0.0)
         # 映射成均值和方差，这俩参数后面用来做重参数化（reparameterization）？
         self.mu = nn.Linear(h_dim, z_dim)
         self.logvar = nn.Linear(h_dim, z_dim)
+        self.layer_norm = nn.LayerNorm(h_dim) if layer_norm else None
+        self.dropout = nn.Dropout(dropout) if dropout > 0 else None
+        self.activation = _build_activation(activation)
     def forward(self, x):              # x: [B,T,x_dim]
         # 前向传播，取出每个时间步的 hidden state
         h,_ = self.gru(x)              # [B,T,h_dim]
+        if self.layer_norm:
+            h = self.layer_norm(h)
+        if self.activation:
+            h = self.activation(h)
+        if self.dropout:
+            h = self.dropout(h)
         mu, logvar = self.mu(h), self.logvar(h)
         # reparameterization trick！
         std = torch.exp(0.5*logvar)
@@ -67,12 +91,21 @@ def koopman_A_from_zbar(zbar):
 # 从潜空间 z 恢复回原始的观测序列 x
 # 用来对应论文里的 decoder p(x|z)
 class GRUDecoder(nn.Module):
-    def __init__(self, z_dim, h_dim, x_dim, num_layers=1):
+    def __init__(self, z_dim, h_dim, x_dim, num_layers=1, dropout=0.0, layer_norm=False, activation="tanh"):
         super().__init__()
-        self.gru = nn.GRU(z_dim, h_dim, num_layers=num_layers, batch_first=True)
+        self.gru = nn.GRU(z_dim, h_dim, num_layers=num_layers, batch_first=True, dropout=dropout if num_layers > 1 else 0.0)
         self.out = nn.Linear(h_dim, x_dim)
+        self.layer_norm = nn.LayerNorm(h_dim) if layer_norm else None
+        self.dropout = nn.Dropout(dropout) if dropout > 0 else None
+        self.activation = _build_activation(activation)
     def forward(self, z):
         h,_ = self.gru(z)
+        if self.layer_norm:
+            h = self.layer_norm(h)
+        if self.activation:
+            h = self.activation(h)
+        if self.dropout:
+            h = self.dropout(h)
         xhat = self.out(h)
         return xhat
         
@@ -82,11 +115,12 @@ class GRUDecoder(nn.Module):
 # 同时通过 koopman_A_from_zbar 求线性动力系统矩阵 A
 # 能不能别报错了 求你了
 class KoVAE(nn.Module):
-    def __init__(self, x_dim, z_dim=16, h_dim=64, layers=1, eig_target=None, eig_margin=0.0):
+    def __init__(self, x_dim, z_dim=16, h_dim=64, layers=1, eig_target=None, eig_margin=0.0,
+                 dropout=0.0, layer_norm=False, activation="tanh"):
         super().__init__()
-        self.enc = GRUEncoder(x_dim, h_dim, z_dim, layers)
+        self.enc = GRUEncoder(x_dim, h_dim, z_dim, layers, dropout=dropout, layer_norm=layer_norm, activation=activation)
         self.pri = GRUPrior(z_dim, h_dim, layers)
-        self.dec = GRUDecoder(z_dim, h_dim, x_dim, layers)
+        self.dec = GRUDecoder(z_dim, h_dim, x_dim, layers, dropout=dropout, layer_norm=layer_norm, activation=activation)
         # 这俩参数跟论文里谱约束有关，用来控制 Koopman 矩阵的特征值范围
         self.eig_target = eig_target     # None / 1.0 / "<=1"？（比如可以设成 1.0 或 “<=1”）
         self.eig_margin = eig_margin
@@ -124,6 +158,7 @@ class KoVAE(nn.Module):
         L_kl = KL.mean()
         # 特征值正则项（谱约束）：控制 Koopman 矩阵 A 的稳定性
         L_eig = 0.0
+        mod = torch.tensor([0.0], device=x.device)
         if gamma > 0:
             evals = torch.linalg.eigvals(A)          # complex？复数？
             mod = evals.abs().real                   # 取模 |λ|

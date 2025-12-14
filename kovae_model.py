@@ -6,6 +6,21 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
+
+def _build_activation(name: str):
+    name = (name or "tanh").lower()
+    if name == "relu":
+        return nn.ReLU()
+    if name == "gelu":
+        return nn.GELU()
+    if name == "elu":
+        return nn.ELU()
+    if name == "silu":
+        return nn.SiLU()
+    if name in ("none", "linear"):
+        return None
+    return nn.Tanh()
+
 # 这部分是论文的核心实现！
 # KoVAE = Koopman Variational Autoencoder
 # 主要思想：用线性的 Koopman 算子来建模潜在空间的动态，而不是传统 VAE 的静态高斯先验
@@ -16,17 +31,26 @@ class GRUEncoder(nn.Module):
 # 输出两个东西：
 # 1. 采样的 z (通过重参数化技巧)
 # 2. 均值 mu 和方差 logvar (用于计算 KL 散度)
-    
-    def __init__(self, x_dim, h_dim, z_dim, layers=1):
+
+    def __init__(self, x_dim, h_dim, z_dim, layers=1, dropout=0.0, layer_norm=False, activation="tanh"):
         super().__init__()
         # GRU 用来提取时序特征，batch_first=True 意味着输入是 [B,T,x_dim]
-        self.gru = nn.GRU(x_dim, h_dim, num_layers=layers, batch_first=True)
+        self.gru = nn.GRU(x_dim, h_dim, num_layers=layers, batch_first=True, dropout=dropout if layers > 1 else 0.0)
         # 两个线性层分别输出均值和对数方差
         self.mu = nn.Linear(h_dim, z_dim)
         self.logvar = nn.Linear(h_dim, z_dim)
+        self.layer_norm = nn.LayerNorm(h_dim) if layer_norm else None
+        self.dropout = nn.Dropout(dropout) if dropout > 0 else None
+        self.activation = _build_activation(activation)
     def forward(self, x):              # [B,T,x_dim] - B是batch，T是时间步，x_dim是输入维度
         # GRU 处理整个序列，得到每个时间步的隐状态
         h,_ = self.gru(x)              # h: [B,T,h_dim]
+        if self.layer_norm:
+            h = self.layer_norm(h)
+        if self.activation:
+            h = self.activation(h)
+        if self.dropout:
+            h = self.dropout(h)
         # 计算后验分布的参数
         mu, logvar = self.mu(h), self.logvar(h)
         # 重参数化技巧！这是 VAE 的关键
@@ -88,12 +112,21 @@ def koopman_A_from_zbar(zbar):         # zbar: [B,T,k]
 class GRUDecoder(nn.Module):
     # 解码器 p(x|z) - 论文 4.1 节
     # 作用：从潜在表示 z_{1:T} 重构观测序列 x_{1:T}
-    def __init__(self, z_dim, h_dim, x_dim, layers=1):
+    def __init__(self, z_dim, h_dim, x_dim, layers=1, dropout=0.0, layer_norm=False, activation="tanh"):
         super().__init__()
-        self.gru = nn.GRU(z_dim, h_dim, num_layers=layers, batch_first=True)
+        self.gru = nn.GRU(z_dim, h_dim, num_layers=layers, batch_first=True, dropout=dropout if layers > 1 else 0.0)
         self.out = nn.Linear(h_dim, x_dim)
+        self.layer_norm = nn.LayerNorm(h_dim) if layer_norm else None
+        self.dropout = nn.Dropout(dropout) if dropout > 0 else None
+        self.activation = _build_activation(activation)
     def forward(self, z):               # [B,T,z_dim]
         h,_ = self.gru(z)
+        if self.layer_norm:
+            h = self.layer_norm(h)
+        if self.activation:
+            h = self.activation(h)
+        if self.dropout:
+            h = self.dropout(h)
         xhat = self.out(h)              # 重构的序列
         return xhat
 
@@ -106,11 +139,12 @@ class KoVAE(nn.Module):
     # - L_pred: 预测损失，让后验 z 接近先验 \bar{z}（增强一致性）
     # - KL: 正则化，让后验分布不要偏离先验太远
     # - L_eig: 特征值约束，控制 Koopman 算子的动态特性（可选）
-    def __init__(self, x_dim, z_dim=16, h_dim=64, layers=1, eig_target=None, eig_margin=0.0):
+    def __init__(self, x_dim, z_dim=16, h_dim=64, layers=1, eig_target=None, eig_margin=0.0,
+                 dropout=0.0, layer_norm=False, activation="tanh"):
         super().__init__()
-        self.enc = GRUEncoder(x_dim, h_dim, z_dim, layers)
+        self.enc = GRUEncoder(x_dim, h_dim, z_dim, layers, dropout=dropout, layer_norm=layer_norm, activation=activation)
         self.pri = GRUPrior(z_dim, h_dim, layers)
-        self.dec = GRUDecoder(z_dim, h_dim, x_dim, layers)
+        self.dec = GRUDecoder(z_dim, h_dim, x_dim, layers, dropout=dropout, layer_norm=layer_norm, activation=activation)
         # 特征值约束参数（论文 4.3 节）
         # eig_target: None（无约束）, 1.0（单位圆上）, "<=1"（单位圆内，保证稳定性）
         self.eig_target = eig_target
@@ -205,19 +239,36 @@ class Koopman_Desko:
             x_dim = args['state_dim'] + args['act_dim']
 
         # 从配置读取超参数
-        z_dim = int(args.get('z_dim', 16))    # 潜在空间维度
-        h_dim = int(args.get('h_dim', 64))    # GRU 隐状态维度
+        z_dim = int(args.get('z_dim', 64))    # 潜在空间维度
+        h_dim = int(args.get('h_dim', 256))    # GRU 隐状态维度
         layers = int(args.get('layers', 1))    # GRU 层数
         eig_target = args.get('eig_target', None)  # 可设为 1.0 或 "<=1"
         eig_margin = float(args.get('eig_margin', 0.0))
+        dropout = float(args.get('dropout', 0.0))
+        layer_norm = bool(args.get('layer_norm', False))
+        activation = args.get('activation', 'tanh')
 
         # 创建模型
-        self.model = KoVAE(x_dim, z_dim, h_dim, layers, eig_target, eig_margin).to(self.device)
+        self.model = KoVAE(x_dim, z_dim, h_dim, layers, eig_target, eig_margin,
+                           dropout=dropout, layer_norm=layer_norm, activation=activation).to(self.device)
 
         # 优化器：AdamW 带权重衰减（正则化）
         lr = float(args.get('learning_rate', 1e-3))
         wd = float(args.get('weight_decay', 1e-4))
         self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=lr, weight_decay=wd)
+        scheduler_type = args.get('lr_scheduler', 'none')
+        self.scheduler = None
+        if scheduler_type != 'none':
+            step_size = int(args.get('scheduler_step', 50))
+            gamma = float(args.get('scheduler_gamma', 0.5))
+            min_lr = float(args.get('scheduler_min_lr', 1e-6))
+            if scheduler_type == 'cosine':
+                self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                    self.optimizer, T_max=int(args.get('num_epochs', 100)), eta_min=min_lr)
+            elif scheduler_type == 'step':
+                self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=step_size, gamma=gamma)
+            elif scheduler_type == 'plateau':
+                self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, factor=gamma, patience=step_size)
 
         # 训练相关参数
         self.grad_clip = float(args.get('grad_clip', 1.0))
@@ -321,6 +372,13 @@ class Koopman_Desko:
                 running_v += loss.item() * x.size(0)
                 n_v += x.size(0)
         self.loss_store_t = running_v / max(1, n_v)
+
+        # 调整学习率
+        if self.scheduler is not None:
+            if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                self.scheduler.step(self.loss_store_t)
+            else:
+                self.scheduler.step()
 
     # 保存/恢复，与工程一致
 
