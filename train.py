@@ -101,7 +101,7 @@ def main():
         # 是否把动作拼进输入
         args.setdefault('use_action', False)
 
-    args['continue_training'] = True
+    args['continue_training'] = False  # 只训练1次，不重复10轮
 
     if args.get('grid_sweep', False):
         run_grid_sweeps(args, Koopman_Desko, dreamer)
