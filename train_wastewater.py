@@ -151,7 +151,13 @@ def main():
         for e in range(args['num_epochs']):
             print(f"\n[Epoch {e}/{args['num_epochs']}] Training...", flush=True)
             model.learn(e, x_train, x_val, x_test, args)
-            maybe_step_scheduler(model, args, metric=model.loss_store_t)
+
+            # Step scheduler if configured
+            if hasattr(model, 'scheduler') and model.scheduler is not None:
+                if args.get('lr_scheduler', 'none') == 'reduce_on_plateau':
+                    model.scheduler.step(model.loss_store_t)
+                else:
+                    model.scheduler.step()
 
             if e % 10 == 0:
                 print("  Saving model checkpoint...", flush=True)
