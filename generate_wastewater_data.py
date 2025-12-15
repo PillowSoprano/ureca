@@ -197,12 +197,19 @@ def generate_and_save_wastewater_data(args, save_dir='data/waste_water'):
     train_subset, val_subset = random_split(dataset_train, [len_train, len_val],
                                            generator=torch.Generator().manual_seed(1))
 
-    # Save datasets
+    # Save datasets as dictionaries containing raw tensors
     os.makedirs(save_dir, exist_ok=True)
-    torch.save(train_subset, f'{save_dir}/train.pt')
-    torch.save(val_subset, f'{save_dir}/val.pt')
-    torch.save(dataset_test, f'{save_dir}/test.pt')
-    torch.save(dataset_test, f'{save_dir}/draw.pt')  # For visualization
+
+    # Extract data from subsets
+    train_x = torch.stack([dataset_train.x[i] for i in train_subset.indices])
+    train_u = torch.stack([dataset_train.u[i] for i in train_subset.indices])
+    val_x = torch.stack([dataset_train.x[i] for i in val_subset.indices])
+    val_u = torch.stack([dataset_train.u[i] for i in val_subset.indices])
+
+    torch.save({'x': train_x, 'u': train_u}, f'{save_dir}/train.pt')
+    torch.save({'x': val_x, 'u': val_u}, f'{save_dir}/val.pt')
+    torch.save({'x': dataset_test.x, 'u': dataset_test.u}, f'{save_dir}/test.pt')
+    torch.save({'x': dataset_test.x, 'u': dataset_test.u}, f'{save_dir}/draw.pt')  # For visualization
 
     # Save normalization statistics
     np.savetxt(f'{save_dir}/shift_x.txt', shift_x)

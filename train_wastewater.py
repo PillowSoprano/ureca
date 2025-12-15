@@ -100,10 +100,23 @@ def main():
 
     # Load pre-generated data
     print("Loading training data...")
-    x_train = torch.load(f'{data_dir}/train.pt')
-    x_val = torch.load(f'{data_dir}/val.pt')
-    x_test = torch.load(f'{data_dir}/test.pt')
-    test_draw = torch.load(f'{data_dir}/draw.pt')
+    train_data = torch.load(f'{data_dir}/train.pt', weights_only=False)
+    val_data = torch.load(f'{data_dir}/val.pt', weights_only=False)
+    test_data = torch.load(f'{data_dir}/test.pt', weights_only=False)
+    draw_data = torch.load(f'{data_dir}/draw.pt', weights_only=False)
+
+    # Handle both old (Dataset object) and new (dict) formats
+    if isinstance(train_data, dict):
+        from torch.utils.data import TensorDataset
+        x_train = TensorDataset(train_data['x'], train_data['u'])
+        x_val = TensorDataset(val_data['x'], val_data['u'])
+        x_test = TensorDataset(test_data['x'], test_data['u'])
+        test_draw = TensorDataset(draw_data['x'], draw_data['u'])
+    else:
+        x_train = train_data
+        x_val = val_data
+        x_test = test_data
+        test_draw = draw_data
 
     # Load normalization statistics
     args['shift_x'] = f'{data_dir}/shift_x.txt'
@@ -116,24 +129,12 @@ def main():
     print(f"✓ Loaded {len(x_test)} test samples\n")
 
     try:
-        # Use modified training loop similar to train.py
-        from train import HybridDataset, build_hybrid_rollouts, maybe_step_scheduler
-        from torch.utils.data import DataLoader, ConcatDataset
-
-        # Wrap datasets in HybridDataset format
+        # For hybrid mode, we would need to generate simulator rollouts
+        # For now, standard mode training only uses real data
         if args.get('training_mode','standard') == 'hybrid':
-            print("Using hybrid training mode...")
-            hybrid_sets = build_hybrid_rollouts(args)
-            if hybrid_sets:
-                sim_train, sim_val = hybrid_sets
-                x_train = ConcatDataset([HybridDataset(x_train, has_sim=False), sim_train])
-                x_val = ConcatDataset([HybridDataset(x_val, has_sim=False), sim_val])
-            else:
-                x_train = HybridDataset(x_train, has_sim=False)
-                x_val = HybridDataset(x_val, has_sim=False)
-        else:
-            x_train = HybridDataset(x_train, has_sim=False)
-            x_val = HybridDataset(x_val, has_sim=False)
+            print("⚠  Warning: Hybrid mode not yet implemented for wastewater.")
+            print("   Falling back to standard mode training.\n")
+            args['training_mode'] = 'standard'
 
         # Restore model parameters if they exist
         args['restore'] = True

@@ -2,7 +2,7 @@ import math
 import numpy as np, torch, random
 np.random.seed(0); random.seed(0); torch.manual_seed(0)
 import random
-import progressbar2 as progressbar
+import progressbar
 import os
 from torch.utils.data import Dataset, DataLoader, random_split
 import torch
