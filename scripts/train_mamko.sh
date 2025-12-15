@@ -34,10 +34,10 @@ case "$MODE" in
   standard)
     EPOCHS="${EPOCHS:-401}"
     BATCH_SIZE="${BATCH_SIZE:-256}"
-    CMD=(python train.py mamba wastewater --epochs "$EPOCHS" --batch_size "$BATCH_SIZE")
+    CMD=(python train.py mamba waste_water)
     ;;
   hybrid)
-    CMD=(python train.py mamba wastewater --training_mode hybrid)
+    CMD=(python train.py mamba waste_water)
     ;;
   *)
     echo "Unknown mode: $MODE" >&2
