@@ -8,15 +8,24 @@ import torch
 import matplotlib
 matplotlib.use("Agg")    # 无界面模式，适合服务器跑
 import matplotlib.pyplot as plt
+import argparse
 
 from replay_fouling import ReplayMemory
 import args_new as new_args
 
+# 添加命令行参数解析
+parser = argparse.ArgumentParser()
+parser.add_argument('method', type=str, help='Method: mamba, kovae, DKO, MLP, etc.')
+parser.add_argument('model', type=str, help='Model: waste_water, cartpole, etc.')
+parser.add_argument('--run_id', type=int, default=0, help='Run ID')
+parser.add_argument('--num_samples', type=int, default=20, help='Number of trajectories to plot')
+args_cmd = parser.parse_args()
+
 # 配置区
-METHOD = "kovae"
-MODEL  = "cartpole"    # 测试环境：倒立摆
-RUN_ID = 9
-NUM_SAMPLES = 20    # 画多少条轨迹
+METHOD = args_cmd.method
+MODEL  = args_cmd.model
+RUN_ID = args_cmd.run_id
+NUM_SAMPLES = args_cmd.num_samples
 OUT_DIR = f"loss/{METHOD}/{MODEL}/{RUN_ID}/plots"
 
 # 加载 args
@@ -60,8 +69,10 @@ if MODEL == "cartpole":
     from envs.cartpole import CartPoleEnv_adv as dreamer
 elif MODEL == "cartpole_V":
     from envs.cartpole_V import CartPoleEnv_adv as dreamer
+elif MODEL == "waste_water":
+    from waste_water_system import waste_water_system as dreamer
 else:
-    raise ValueError("只示例了 cartpole/cartpole_V")
+    raise ValueError(f"Unsupported model: {MODEL}")
 
 env = dreamer().unwrapped
 args["state_dim"] = env.observation_space.shape[0]  # 状态维度（论文里的 d）
