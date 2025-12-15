@@ -3,7 +3,7 @@ args = {
 'batch_size': 256,
 'import_saved_data': False,
 'val_frac': 0.2,
-'lr1': 3e-4,
+'lr1': 1e-4,  # Reduced from 3e-4 for numerical stability
 'gamma': 0.9,
 'num_epochs' : 401,
 'weight_decay': 0.001,

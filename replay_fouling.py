@@ -168,6 +168,12 @@ class ReplayMemory():
         x = np.array(x)
         u = np.array(u)
 
+        # Filter out samples with NaN or Inf values
+        valid_mask = np.all(np.isfinite(x), axis=(1, 2)) & np.all(np.isfinite(u), axis=(1, 2))
+        x = x[valid_mask]
+        u = u[valid_mask]
+        print(f"Filtered data: kept {np.sum(valid_mask)}/{len(valid_mask)} samples (removed {len(valid_mask)-np.sum(valid_mask)} with NaN/Inf)")
+
         len_x = int(np.floor(len(x)/args['batch_size'])*args['batch_size'])
         x = x[:len_x]
         u = u[:len_x]

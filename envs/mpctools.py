@@ -31,7 +31,7 @@ class DiscreteSimulator:
 
     def sim(self, state, input_vec):
         """
-        Simulate one timestep forward.
+        Simulate one timestep forward with numerical stability checks.
 
         Args:
             state: Current state vector (numpy array)
@@ -40,10 +40,29 @@ class DiscreteSimulator:
         Returns:
             Next state vector after one timestep
         """
-        # Compute the derivative
-        dxdt = self.ode_func(state, input_vec)
+        # Clip state to prevent extreme values
+        state = np.clip(state, -1e6, 1e6)
+
+        # Compute the derivative with error handling
+        try:
+            with np.errstate(all='raise'):
+                dxdt = self.ode_func(state, input_vec)
+        except (FloatingPointError, RuntimeWarning):
+            # If overflow, return state unchanged
+            return state
+
+        # Check for NaN or Inf in derivative
+        if not np.all(np.isfinite(dxdt)):
+            # Return state unchanged if derivative is invalid
+            return state
+
+        # Clip derivative to prevent exploding
+        dxdt = np.clip(dxdt, -1e3, 1e3)
 
         # Euler integration: x(t+1) = x(t) + dt * f(x(t), u(t))
         next_state = state + self.timestep * dxdt
+
+        # Clip next state
+        next_state = np.clip(next_state, -1e6, 1e6)
 
         return next_state
