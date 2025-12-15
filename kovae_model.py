@@ -297,6 +297,11 @@ class Koopman_Desko:
             # 如果 u 是 [B,act_dim]，扩展成 [B,T,act_dim]
             if u.dim() == 2 and x.dim() == 3:
                 u = u[:, None, :].expand(x.size(0), x.size(1), u.size(-1))
+            # 处理 u 比 x 少一个时间步的情况 (T-1 actions for T states)
+            elif u.dim() == 3 and x.dim() == 3 and u.size(1) == x.size(1) - 1:
+                # 在最后补零：[B, T-1, act_dim] -> [B, T, act_dim]
+                u_pad = torch.zeros(u.size(0), 1, u.size(2), device=u.device, dtype=u.dtype)
+                u = torch.cat([u, u_pad], dim=1)
             # 拼接 [x, u]
             xin = torch.cat([x, u], dim=-1)
         else:
