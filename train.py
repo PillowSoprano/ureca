@@ -59,10 +59,15 @@ def main():
         from envs.cartpole import CartPoleEnv_adv as dreamer
     if condition.model == 'cartpole_V':
         from envs.cartpole_V import CartPoleEnv_adv as dreamer
-        
+
     if condition.model == 'half_cheetah':
         # from envs.half_cheetah_cost import HalfCheetahEnv_cost as dreamer
         dreamer = gym.make('HalfCheetah-v2')
+
+    # 添加对废水处理环境的支持
+    if condition.model == 'waste_water':
+        from waste_water_system import waste_water_system as dreamer
+
     args['env'] = condition.model
 
     
