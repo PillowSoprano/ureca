@@ -402,15 +402,20 @@ class Koopman_Desko:
         else:
             map_loc = torch.device("cpu")
 
-        # 加载模型和优化器
-        state = torch.load(path_m, map_location=map_loc)
-        opti  = torch.load(path_o, map_location=map_loc)
-        self.model.load_state_dict(state)
-        self.optimizer.load_state_dict(opti)
+        # Check if checkpoint exists before loading
+        import os
+        if os.path.exists(path_m) and os.path.exists(path_o):
+            # 加载模型和优化器
+            state = torch.load(path_m, map_location=map_loc)
+            opti  = torch.load(path_o, map_location=map_loc)
+            self.model.load_state_dict(state)
+            self.optimizer.load_state_dict(opti)
+            print(f"^_^ Model restored to device: {self.device}")
+        else:
+            print(f"No checkpoint found at {path_m}, starting from scratch")
 
         # 把模型搬到正确的设备上
         self.model.to(map_loc)
         self.device = map_loc
-        print(f"^_^ Model restored to device: {self.device}")
 
 

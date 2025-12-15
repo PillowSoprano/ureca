@@ -226,14 +226,21 @@ class Koopman_Desko(object):
             self.device = torch.device('cpu')
 
         self.net = Mamba(args)
-        self.net.load_state_dict(torch.load(self.MODEL_SAVE,map_location=self.device))    
-        self.net.to(self.device)
+
+        # Check if checkpoint exists before loading
+        import os
+        if os.path.exists(self.MODEL_SAVE):
+            self.net.load_state_dict(torch.load(self.MODEL_SAVE,map_location=self.device))
+            self.net.to(self.device)
+            print("restore!")
+        else:
+            self.net.to(self.device)
+            print(f"No checkpoint found at {self.MODEL_SAVE}, starting from scratch")
 
         self.optimizer1 = optim.Adam([{'params': self.net.parameters(),'lr':args['lr1'],'weight_decay':args['weight_decay']}])
 
 
         # self.net.eval()
-        print("restore!")
 
 
     
