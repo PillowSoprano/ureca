@@ -82,7 +82,7 @@ class Koopman_Desko(object):
         count = 0
         self.train_data = DataLoader(dataset = x_val, batch_size = args['batch_size'], shuffle = False, drop_last = False)
 
-        for x_,u_ in self.train_data:
+        for x_,u_,*_ in self.train_data:  # Unpack HybridDataset (x, u, sim, mask)
             self.pred_forward(x_,u_,args)
             count += 1
 
@@ -93,7 +93,7 @@ class Koopman_Desko(object):
         count = 0
         self.train_data = DataLoader(dataset = x_test, batch_size = args['batch_size'], shuffle = True, drop_last = False)
 
-        for x_,u_ in self.train_data:
+        for x_,u_,*_ in self.train_data:  # Unpack HybridDataset (x, u, sim, mask)
             self.pred_forward(x_,u_,args)
             count += 1
 
@@ -106,7 +106,7 @@ class Koopman_Desko(object):
         count = 0
         loss_buff = 0
 
-        for x_,u_ in self.train_data:
+        for x_,u_,*_ in self.train_data:  # Unpack HybridDataset (x, u, sim, mask)
             self.loss = 0.0
             self.pred_forward(x_,u_,args)
             loss_buff += self.loss
@@ -226,14 +226,21 @@ class Koopman_Desko(object):
             self.device = torch.device('cpu')
 
         self.net = Mamba(args)
-        self.net.load_state_dict(torch.load(self.MODEL_SAVE,map_location=self.device))    
-        self.net.to(self.device)
+
+        # Check if checkpoint exists before loading
+        import os
+        if os.path.exists(self.MODEL_SAVE):
+            self.net.load_state_dict(torch.load(self.MODEL_SAVE,map_location=self.device))
+            self.net.to(self.device)
+            print("restore!")
+        else:
+            self.net.to(self.device)
+            print(f"No checkpoint found at {self.MODEL_SAVE}, starting from scratch")
 
         self.optimizer1 = optim.Adam([{'params': self.net.parameters(),'lr':args['lr1'],'weight_decay':args['weight_decay']}])
 
 
         # self.net.eval()
-        print("restore!")
 
 
     
