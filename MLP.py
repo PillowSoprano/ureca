@@ -173,10 +173,12 @@ class Koopman_Desko(object):
                     axs[i].plot(x_time_list[j], x_pred_list[j][:,0,i], 'r')
             
             plt.xlabel('Time Step')
+            os.makedirs('data/MLP', exist_ok=True)
             plt.savefig('data/MLP/predictions_' + str(e) + '.png')
             print("plot")
             if e == args['num_epochs']-1:
                 # plt.savefig('data/predictions_' + str(e) + '.pdf')
+                os.makedirs('Prediction/MLP', exist_ok=True)
                 np.save('Prediction/MLP/x_pred.npy',np.array(x_pred_list))
                 np.save('Prediction/MLP/x_time.npy',np.array(x_time_list))
                 np.save('Prediction/MLP/x_all_time.npy',np.array(time_all))
