@@ -82,7 +82,7 @@ class Koopman_Desko(object):
         count = 0
         self.train_data = DataLoader(dataset = x_val, batch_size = args['batch_size'], shuffle = False, drop_last = False)
 
-        for x_,u_ in self.train_data:
+        for x_,u_,*_ in self.train_data:  # Unpack HybridDataset (x, u, sim, mask)
             self.pred_forward(x_,u_,args)
             count += 1
 
@@ -93,7 +93,7 @@ class Koopman_Desko(object):
         count = 0
         self.train_data = DataLoader(dataset = x_test, batch_size = args['batch_size'], shuffle = True, drop_last = False)
 
-        for x_,u_ in self.train_data:
+        for x_,u_,*_ in self.train_data:  # Unpack HybridDataset (x, u, sim, mask)
             self.pred_forward(x_,u_,args)
             count += 1
 
@@ -106,7 +106,7 @@ class Koopman_Desko(object):
         count = 0
         loss_buff = 0
 
-        for x_,u_ in self.train_data:
+        for x_,u_,*_ in self.train_data:  # Unpack HybridDataset (x, u, sim, mask)
             self.loss = 0.0
             self.pred_forward(x_,u_,args)
             loss_buff += self.loss
