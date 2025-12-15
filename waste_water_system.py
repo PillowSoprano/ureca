@@ -117,10 +117,10 @@ class waste_water_system(gym.Env):
 
     def step(self, action, impulse = 0):
 
-        input = np.concatenate([np.clip(action[:2], self.action_low, self.action_high),action[2:]])
-        # input = np.concatenate((action, self.Q0[self.t], self.Z0[self.t]))
+        # Construct full input: [action (2), Q0 (1), Z0 (13)] = 16 total
+        input = np.concatenate([np.clip(action[:2], self.action_low, self.action_high), self.Q0[self.t], self.Z0[self.t]])
         self.state = self.wwtp_sim.sim(self.state, input)
-        
+
         # if self.apply_noise:
         #     self.state = self.state + np.random.normal(np.zeros_like(self.state), self.w_sigma)
 
@@ -132,12 +132,14 @@ class waste_water_system(gym.Env):
         s_attention = [self.state[59],self.state[21]]
         cost = np.linalg.norm(s_attention - self.xs)
         #----------------------cost--------------------#
- 
+
         ref_attention = []
         self.cost_use = 0
         # print(cost)
 
-        cost, EQk , AEk , PEk , SPk , MEk  = self.cost(self.state, action, action[2:])
+        # Pass Q0 and Z0 as disturbance parameters to cost function
+        disturbance_params = np.concatenate([self.Q0[self.t], self.Z0[self.t]])
+        cost, EQk , AEk , PEk , SPk , MEk  = self.cost(self.state, action, disturbance_params)
 
         self.cost_every = [EQk , AEk , PEk , SPk , MEk]
 
