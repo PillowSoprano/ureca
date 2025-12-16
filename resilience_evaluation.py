@@ -71,19 +71,30 @@ print(f"关键维度: {top_dims}")
 print(f"对应标准差: {scale_x[top_dims]}")
 print()
 
-# 生成测试数据
-print("生成测试数据...")
-from replay_fouling import ReplayMemory
-replay_memory = ReplayMemory(args, env, predict_evolution=True)
-test_dataset = replay_memory.dataset_test_draw
-print(f"✓ 生成了 {len(test_dataset)} 个测试样本")
+# 加载测试数据（使用与对比实验相同的数据）
+print("加载测试数据...")
+draw_path = new_args.args['SAVE_DRAW']
+
+# 如果测试数据文件不存在，生成一个并保存
+if not os.path.exists(draw_path):
+    print("  测试数据文件不存在，从 replay memory 生成...")
+    from replay_fouling import ReplayMemory
+    replay_memory = ReplayMemory(args, env, predict_evolution=True)
+    test_draw = replay_memory.dataset_test_draw
+    # 保存测试数据以便后续使用
+    os.makedirs(os.path.dirname(draw_path) if os.path.dirname(draw_path) else '.', exist_ok=True)
+    torch.save(test_draw, draw_path)
+    print(f"  ✓ 生成并保存了 {len(test_draw)} 个测试样本到 {draw_path}")
+else:
+    test_draw = torch.load(draw_path)
+    print(f"  ✓ 从文件加载了 {len(test_draw)} 个测试样本")
 print()
 
 # 使用多个测试样本
-num_test_samples = min(5, len(test_dataset))
+num_test_samples = min(5, len(test_draw))
 test_samples = []
 for i in range(num_test_samples):
-    x, u = test_dataset[i]
+    x, u = test_draw[i]
     if isinstance(x, np.ndarray):
         x = torch.from_numpy(x).float()
     if isinstance(u, np.ndarray):
