@@ -64,7 +64,20 @@ print()
 
 # 加载测试数据
 print("加载测试数据...")
-test_draw = torch.load(new_args.args['SAVE_DRAW'])
+import os
+draw_path = new_args.args['SAVE_DRAW']
+
+# 如果测试数据文件不存在，生成一个
+if not os.path.exists(draw_path):
+    print("  测试数据文件不存在，从 replay memory 生成...")
+    from replay_fouling import ReplayMemory
+    replay_memory = ReplayMemory(args, env, predict_evolution=True)
+    test_draw = replay_memory.dataset_test_draw
+    print(f"  ✓ 从 replay memory 生成了 {len(test_draw)} 个测试样本")
+else:
+    test_draw = torch.load(draw_path)
+    print(f"  ✓ 从文件加载了 {len(test_draw)} 个测试样本")
+
 x_test, u_test = test_draw[0]
 x_test = x_test.unsqueeze(0)
 u_test = u_test.unsqueeze(0)
