@@ -213,6 +213,11 @@ for horizon in long_term_horizons:
     truth_norm = x_test.numpy()[0, old_horizon:old_horizon+horizon, :]
     pred_norm = pred[0, :horizon, :]
 
+    # 确保形状匹配（取最小长度）
+    min_len = min(len(pred_norm), len(truth_norm))
+    truth_norm = truth_norm[:min_len]
+    pred_norm = pred_norm[:min_len]
+
     _, avg_error = calculate_error(pred_norm, truth_norm, shift_x, scale_x)
     long_term_results[horizon] = avg_error
 
