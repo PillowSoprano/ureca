@@ -310,13 +310,62 @@ class Koopman_Desko:
 
     @torch.no_grad()
     def pred_forward_test(self, x, u, is_draw, args, epoch):
-# 给 train.py 调用的测试接口，这里简单做一次前向并返回预测！
-# 若要画图，可以在 is_draw 为 True 时保存图片到与工程一致的目录！
+        """真正的多步预测函数 - 使用 Koopman 算子做递推预测
 
+        流程:
+        1. 用初始观测窗口编码得到 z_0
+        2. 计算 Koopman 算子 A
+        3. 递推预测: z_t = A @ z_{t-1}
+        4. 每步解码: x_pred[t] = decode(z_t)
+        """
         self.model.eval()
         x, u, xin, _, _ = self._make_batch((x, u))
-        loss, xhat, aux = self.model(xin, self.alpha, self.beta, self.gamma)
-        return xhat.detach().cpu(), aux
+
+        B, T, X = x.shape
+        old_horizon = int(args.get('old_horizon', 0))
+        pred_horizon = int(args.get('pred_horizon', T - old_horizon))
+
+        # 编码初始观测窗口得到初始潜在状态
+        if old_horizon > 0:
+            x_init = xin[:, :old_horizon, :]
+            z_init, _ = self.model.enc(x_init)
+            z_0 = z_init[:, -1, :]  # 取最后一个时间步作为初始状态
+        else:
+            z_init, _ = self.model.enc(xin[:, :1, :])
+            z_0 = z_init[:, 0, :]
+
+        # 生成先验并计算 Koopman 算子 A
+        zbar, _ = self.model.pri(T, B, x.device)
+        A = koopman_A_from_zbar(zbar)  # [k, k]
+
+        # 使用 Koopman 算子递推预测
+        z_preds = []
+        z_t = z_0
+        for t in range(pred_horizon):
+            # 线性递推: z_t = A @ z_{t-1}
+            z_t = z_t @ A.T  # [B, k] @ [k, k] -> [B, k]
+            z_preds.append(z_t)
+
+        z_preds = torch.stack(z_preds, dim=1)  # [B, pred_horizon, k]
+
+        # 解码所有预测的潜在状态
+        xhat_pred = self.model.dec(z_preds)  # [B, pred_horizon, X]
+
+        # 计算预测损失 (对比真实未来状态)
+        if old_horizon + pred_horizon <= T:
+            x_target = x[:, old_horizon:old_horizon+pred_horizon, :]
+            pred_loss = torch.nn.functional.mse_loss(xhat_pred, x_target)
+        else:
+            pred_loss = torch.tensor(0.0)
+
+        # 拼接完整序列用于可视化: [初始观测 | 预测]
+        if old_horizon > 0:
+            xhat_full = torch.cat([x[:, :old_horizon, :], xhat_pred], dim=1)
+        else:
+            xhat_full = xhat_pred
+
+        aux = {'pred_loss': pred_loss.item(), 'A': A.detach()}
+        return xhat_full.detach().cpu(), aux
 
     def learn(self, epoch, x_train, x_val, x_test, args):
 # 单个 epoch 的训练与验证
