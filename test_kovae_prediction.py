@@ -79,8 +79,19 @@ else:
     print(f"  ✓ 从文件加载了 {len(test_draw)} 个测试样本")
 
 x_test, u_test = test_draw[0]
-x_test = x_test.unsqueeze(0)
-u_test = u_test.unsqueeze(0)
+
+# 转换成 torch tensor (如果是 numpy)
+if isinstance(x_test, np.ndarray):
+    x_test = torch.from_numpy(x_test).float()
+if isinstance(u_test, np.ndarray):
+    u_test = torch.from_numpy(u_test).float()
+
+# 添加 batch 维度
+if x_test.dim() == 2:
+    x_test = x_test.unsqueeze(0)
+if u_test.dim() == 2:
+    u_test = u_test.unsqueeze(0)
+
 print(f"✓ 测试数据形状: x={x_test.shape}, u={u_test.shape}")
 print()
 
