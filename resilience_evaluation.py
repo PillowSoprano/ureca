@@ -41,6 +41,10 @@ args['control'] = False
 fold_path = 'save_model/mamba/waste_water'
 args['save_model_path'] = fold_path + '/model.pt'
 args['save_opti_path'] = fold_path + '/opti.pt'
+args['shift_x'] = fold_path + '/shift_x.txt'
+args['scale_x'] = fold_path + '/scale_x.txt'
+args['shift_u'] = fold_path + '/shift_u.txt'
+args['scale_u'] = fold_path + '/scale_u.txt'
 
 from MamKO import Koopman_Desko as MamKO_Model
 mamko = MamKO_Model(args)
