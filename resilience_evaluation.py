@@ -73,7 +73,12 @@ print()
 
 # 加载测试数据（使用与对比实验相同的数据）
 print("加载测试数据...")
-draw_path = new_args.args['SAVE_DRAW']
+draw_path = new_args.args.get('SAVE_DRAW', 'save_model/mamba/waste_water/draw.pt')
+
+# 如果配置的路径无效（如 /draw.pt），使用本地路径
+if not draw_path or draw_path.startswith('/') and not os.access(os.path.dirname(draw_path) or '/', os.W_OK):
+    draw_path = 'save_model/mamba/waste_water/draw.pt'
+    print(f"  使用本地路径: {draw_path}")
 
 # 如果测试数据文件不存在，生成一个并保存
 if not os.path.exists(draw_path):
@@ -82,7 +87,7 @@ if not os.path.exists(draw_path):
     replay_memory = ReplayMemory(args, env, predict_evolution=True)
     test_draw = replay_memory.dataset_test_draw
     # 保存测试数据以便后续使用
-    os.makedirs(os.path.dirname(draw_path) if os.path.dirname(draw_path) else '.', exist_ok=True)
+    os.makedirs(os.path.dirname(draw_path), exist_ok=True)
     torch.save(test_draw, draw_path)
     print(f"  ✓ 生成并保存了 {len(test_draw)} 个测试样本到 {draw_path}")
 else:
