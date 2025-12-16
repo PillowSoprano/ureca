@@ -433,6 +433,10 @@ class Koopman_Desko:
                 n_v += x.size(0)
         self.loss_store_t = running_v / max(1, n_v)
 
+        # 打印损失信息
+        lr = self.optimizer.param_groups[0]['lr'] if self.optimizer else 0.0
+        print(f'epoch {epoch}: loss_train={self.loss_store:.6f} loss_val={self.loss_store_t:.6f} lr={lr:.6f}', flush=True)
+
         # 调整学习率
         if self.scheduler is not None:
             if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
