@@ -90,16 +90,19 @@ def main():
     if condition.method == 'kovae':
         from kovae_model import Koopman_Desko
         args['method'] = 'kovae'
-        # 可选：默认超参
-        args.setdefault('z_dim', 16)
-        args.setdefault('h_dim', 64)
-        args.setdefault('alpha', 0.1)
-        args.setdefault('beta', 1e-3)
-        args.setdefault('gamma', 0.0)       # 需要谱约束再调 >0
-        args.setdefault('grad_clip', 1.0)
+        # 【重训版本】增强动力学学习的超参数
+        args.setdefault('z_dim', 64)        # 增大潜在空间维度
+        args.setdefault('h_dim', 256)       # 增大 GRU 隐层
+        args.setdefault('alpha', 1.0)       # 【关键】增大预测一致性权重 (原来 0.1)
+        args.setdefault('beta', 0.01)       # 增大 KL 散度权重 (原来 0.001)
+        args.setdefault('eig_gamma', 0.1)   # 【关键】启用谱约束 (原来 0.0)
+        args.setdefault('eig_target', '<=1') # 保证系统稳定性
+        args.setdefault('eig_margin', 0.05) # 特征值容忍边界
+        args.setdefault('grad_clip', 2.0)   # 增大梯度裁剪阈值
         args.setdefault('weight_decay', 1e-4)
-        # 是否把动作拼进输入
-        args.setdefault('use_action', False)
+        args.setdefault('use_action', False) # 保持状态空间纯净
+        args.setdefault('dropout', 0.1)     # 正则化
+        args.setdefault('layer_norm', True) # 层归一化
 
     args['continue_training'] = False  # 只训练1次，不重复10轮
 
