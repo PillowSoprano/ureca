@@ -351,6 +351,11 @@ class Koopman_Desko:
         # 解码所有预测的潜在状态
         xhat_pred = self.model.dec(z_preds)  # [B, pred_horizon, X]
 
+        # 如果使用了动作拼接，解码器输出会包含状态+动作，只取状态部分
+        if self.use_action and xhat_pred.shape[-1] > x.shape[-1]:
+            # xhat_pred 是 [B, T, state_dim+act_dim]，只取前 state_dim 维
+            xhat_pred = xhat_pred[:, :, :x.shape[-1]]
+
         # 计算预测损失 (对比真实未来状态)
         if old_horizon + pred_horizon <= T:
             x_target = x[:, old_horizon:old_horizon+pred_horizon, :]
